@@ -426,7 +426,9 @@ function mergeField(local, remote){
   return local!=null ? local : remote; // 원시값은 로컬(방금 편집한 쪽) 우선
 }
 async function pushShared(){
-  if(!syncOn()||(MODE!=='all' && !isAdminRole() && !loginTeacher())||syncBusy) return;
+  if(!syncOn()){ toast('⏸ 동기화 꺼짐 — 전송 안 됨'); return; }
+  if(MODE!=='all' && !isAdminRole() && !loginTeacher()){ toast('🚫 로그인 상태 확인 필요 — 전송 안 됨'); return; }
+  if(syncBusy) return;
   try{
     syncBusy=true;
     // 전송 직전 서버 최신본을 받아와 내 자료와 병합 — 그 사이 다른 사람이 올린 내용을 덮어쓰지 않도록
@@ -443,8 +445,8 @@ async function pushShared(){
     await fbPut('/shared', pack);
     store.sharedAt=pack.updatedAt;
     localStorage.setItem(KEY, JSON.stringify(store));
-    toast('☁ 학원 자료 전송됨');
-  }catch(e){ console.warn('sync push 실패', e); }
+    toast('☁ 학원 자료 전송됨 ✓');
+  }catch(e){ console.warn('sync push 실패', e); toast('⚠ 전송 실패: '+e.message); }
   finally{ syncBusy=false; }
 }
 function mergeById(localArr, remoteArr){
@@ -474,7 +476,7 @@ async function pullShared(silent){
       refreshMonthSel(); refreshLoginSel(); render(true);
       if(!silent) toast('☁ 학원 자료 자동 적용됨');
     }
-  }catch(e){ console.warn('sync pull 실패', e); }
+  }catch(e){ console.warn('sync pull 실패', e); toast('⚠ 수신 실패: '+e.message); }
 }
 async function pushSubmission(pack){
   if(!syncOn()) return false;
