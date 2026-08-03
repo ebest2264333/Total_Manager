@@ -379,6 +379,7 @@ if(!store.teachersIdMigrated){
   }
   store.teachersIdMigrated=true;
 }
+// 단어시험 담당(선생님 순번→고유id 변환)은 반 자료를 실제로 불러올 때(editArr) 그때그때 처리합니다.
 let saveTimer=null;
 function save(){ localStorage.setItem(KEY, JSON.stringify(store));
   const el=document.getElementById('saved'); el.classList.add('show');
@@ -555,7 +556,18 @@ function editArr(a,m){
   const key=m+'|'+a;
   if(!store.uploads[key]) store.uploads[key]=JSON.parse(JSON.stringify((CLASSDATA[a]||{})[m]||[]));
   let changed=false;
-  store.uploads[key].forEach(c=>{ if(!c._id){ c._id=genClassId(); changed=true; } });
+  const teachersArr=store.teachers[a]||[];
+  store.uploads[key].forEach(c=>{
+    if(!c._id){ c._id=genClassId(); changed=true; }
+    // 단어시험 담당: 예전 방식(선생님 순번)이 남아있으면 고유 id로 변환 (순번은 목록 순서가 바뀌면 다른 사람을 가리킬 수 있어 위험)
+    if(c.wordDuty!=null && c.wordDuty!=='' && !isNaN(c.wordDuty)){ const t=teachersArr[Number(c.wordDuty)]; if(t){ c.wordDuty=t.id; changed=true; } }
+    if(c.wordDutyByDay){
+      for(const d in c.wordDutyByDay){
+        const v=c.wordDutyByDay[d];
+        if(v!=null && v!=='' && !isNaN(v)){ const t=teachersArr[Number(v)]; if(t){ c.wordDutyByDay[d]=t.id; changed=true; } }
+      }
+    }
+  });
   if(changed) localStorage.setItem(KEY, JSON.stringify(store));
   return store.uploads[key];
 }
@@ -1027,7 +1039,7 @@ function classCard(c, admin, dayFilter){
       <div class="meta">${c.dept}${c.days?' · '+c.days:''}${c.prev?` · 6월 반명: ${esc(c.prev)}`:''}${c.count?' · '+c.count+'명':''}${(()=>{
         const wi=dayFilter?wordDutyForDay(c,dayFilter):((c.wordDuty!=null&&c.wordDuty!=='')?c.wordDuty:null);
         if(wi==null) return '';
-        const nm=esc((store.teachers[c.academy][Number(wi)]||{}).name||'-');
+        const nm=esc((teacherByDutyVal(c.academy,wi)||{}).name||'-');
         const hasOverrides=c.wordDutyByDay&&Object.keys(c.wordDutyByDay).length>0;
         return ' · 📖 단어시험: '+nm+(!dayFilter&&hasOverrides?' (요일별 다름)':'');
       })()}</div>
@@ -1053,7 +1065,7 @@ function classCard(c, admin, dayFilter){
       </select>
       <select data-cfield="wordDuty" ${attrs} title="단어시험 담당 선생님" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;background:#fff8ec">
         <option value="">📖 단어시험 담당 미지정</option>
-        ${(store.teachers[c.academy]||[]).map((t,i)=>`<option value="${i}" ${String(c.wordDuty)===String(i)&&c.wordDuty!=null&&c.wordDuty!==''?'selected':''}>📖 ${esc(t.name)}</option>`).join('')}
+        ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${c.wordDuty===t.id?'selected':''}>📖 ${esc(t.name)}</option>`).join('')}
       </select>
       <button class="btn small" data-toggleedit ${attrs}>편집 종료</button>
       <button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-delclass ${attrs}>🗑 반 삭제</button>
@@ -1086,8 +1098,24 @@ function classCard(c, admin, dayFilter){
             <span style="font-size:.72rem;font-weight:700">${d}</span>
             <select data-wdday="${d}" ${attrs} style="padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.76rem">
               <option value="">기본값</option>
-              ${(store.teachers[c.academy]||[]).map((t,i)=>`<option value="${i}" ${cur!=null&&String(cur)===String(i)?'selected':''}>${esc(t.name)}</option>`).join('')}
+              ${(store.teachers[c.academy]||[]).map(t=>`<option value="${t.id}" ${cur===t.id?'selected':''}>${esc(t.name)}</option>`).join('')}
             </select>
+          </div>`;
+        }).join('')}
+        </div>
+      </div>`;
+    })()}
+    ${(()=>{
+      const days=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
+      if(days.length<2) return '';
+      return `<div style="margin-bottom:8px;padding:8px 10px;background:#eef5ff;border-radius:10px">
+        <div style="font-size:.76rem;font-weight:700;color:var(--sub);margin-bottom:4px">🕒 요일별 수업 시간 (같은 반이어도 요일마다 시간이 다르면 여기서 개별 지정 — 비우면 위 기본 시간 사용)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${days.map(d=>{
+          const cur=(c.timeByDay&&c.timeByDay[d])||'';
+          return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+            <span style="font-size:.72rem;font-weight:700">${d}</span>
+            <input type="text" data-tdday="${d}" ${attrs} value="${esc(cur)}" placeholder="${esc(timeOf(c))||'기본'}" style="width:96px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:.76rem;text-align:center">
           </div>`;
         }).join('')}
         </div>
@@ -1137,9 +1165,9 @@ function renderClass(list){
   return toolbar+'<div class="grid">'+list.map(c=>classCard(c,admin)).join('')+'</div>';
 }
 /* ---------- 시간표 (관리자·실장) ---------- */
-function freeGaps(a, dayList){
+function freeGaps(a, dayList, wd){
   const wk=WORK[a]; if(!wk) return [];
-  const timed=dayList.filter(c=>c.academy===a).map(c=>parseRange(timeOf(c))).filter(Boolean).sort((x,y)=>x[0]-y[0]);
+  const timed=dayList.filter(c=>c.academy===a).map(c=>parseRange(wd?timeOfDay(c,wd):timeOf(c))).filter(Boolean).sort((x,y)=>x[0]-y[0]);
   const gaps=[]; let cur=wk.s;
   timed.forEach(r=>{ if(r[0]-cur>=0.24) gaps.push([cur,r[0]]); cur=Math.max(cur,r[1]); });
   if(wk.e-cur>=0.24) gaps.push([cur,wk.e]);
@@ -1219,14 +1247,14 @@ function renderTimetableDay(list){
     `<button class="chip ${wd===d?'on':''}" data-ttday="${d}">${d}요일</button>`).join('');
   const dayList=list.filter(c=>cdays(c).includes(wd));
   const gapLines=academies().map(a=>{
-    const gaps=freeGaps(a,dayList);
+    const gaps=freeGaps(a,dayList,wd);
     return `<div style="font-size:.8rem;color:var(--sub);margin-bottom:2px">${MODE==='all'?AC[a].label+' ':''}빈 시간: ${gaps.length?gaps.map(g=>fmtH(g[0])+'~'+fmtH(g[1])).join(', '):'없음'}</div>`;
   }).join('');
   const addBar=`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
     ${academies().map(a=>`<button class="btn primary" data-addclass="${a}" data-presetdays="${wd}">+ ${AC[a].label} 새 반 추가 (${wd}요일)</button>`).join('')}
   </div>`;
   const timed=[], untimed=[];
-  dayList.forEach(c=>{ const r=parseRange(timeOf(c)); if(r) timed.push({c,r}); else untimed.push({c}); });
+  dayList.forEach(c=>{ const r=parseRange(timeOfDay(c,wd)); if(r) timed.push({c,r}); else untimed.push({c}); });
   timed.sort((x,y)=>x.r[0]-y.r[0]);
   let rows='';
   timed.forEach(({c,r})=>{
@@ -1271,6 +1299,9 @@ function bindClassEdit(){
   });
   v.querySelectorAll('[data-wdday]').forEach(sel=>sel.onchange=()=>{
     updateWordDutyDay(sel.dataset.a,sel.dataset.src,sel.dataset.id,sel.dataset.wdday,sel.value);
+  });
+  v.querySelectorAll('[data-tdday]').forEach(inp=>inp.onchange=()=>{
+    updateTimeDay(inp.dataset.a,inp.dataset.src,inp.dataset.id,inp.dataset.tdday,inp.value.trim());
   });
   v.querySelectorAll('[data-toggleedit]').forEach(b=>b.onclick=()=>{
     let id=b.dataset.id;
@@ -1594,13 +1625,24 @@ function markRetestDone(id){
   r.updatedAt=Date.now();
   save(); render(true);
 }
+const WORDBOOK_OPTIONS=['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼'];
+const WORDLANG_OPTIONS=['한글','믹스','영어'];
 function wtStudentRow(s, date){
   const r=store.wordTests.find(x=>x.studentId===s.id && x.date===date)||{};
   const dim = r.absent ? 'opacity:.5' : '';
+  const wbSel=`<select data-wtfield="${s.id}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    <option value="">단어장 선택</option>
+    ${WORDBOOK_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.wordbook===o?'selected':''}>${esc(o)}</option>`).join('')}
+  </select>`;
+  const langSel=`<select data-wtfield="${s.id}|lang" ${r.absent?'disabled':''} style="width:76px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+    <option value="">유형</option>
+    ${WORDLANG_OPTIONS.map(o=>`<option value="${esc(o)}" ${r.lang===o?'selected':''}>${esc(o)}</option>`).join('')}
+  </select>`;
   return `<div class="rowitem" style="align-items:center;flex-wrap:wrap">
       <span class="key">${esc(s.nameKo)} ${MODE==='all'?bdg(s.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(s.className||'')}</span></span>
       <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <input type="text" placeholder="단어장" value="${esc(r.wordbook||'')}" data-wtfield="${s.id}|wordbook" ${r.absent?'disabled':''} style="width:120px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        ${wbSel}
+        ${langSel}
         <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>
         <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
@@ -1613,7 +1655,7 @@ function renderWordTestToday(){
   if(admin){
     studentsList=store.students.filter(s=>s.status==='재원' && (state.ac==='all'||s.academy===state.ac));
   } else if(lt){
-    const todaysDutyClasses=classesFor(date.slice(0,7)).filter(c=>c.academy===lt.a && cdays(c).includes(wd) && wordDutyForDay(c,wd)!=null && Number(wordDutyForDay(c,wd))===lt.i);
+    const todaysDutyClasses=classesFor(date.slice(0,7)).filter(c=>c.academy===lt.a && cdays(c).includes(wd) && wordDutyForDay(c,wd)!=null && wordDutyForDay(c,wd)===lt.t.id);
     if(!todaysDutyClasses.length){
       return `<div class="empty">오늘(${wd}요일)은 담당으로 배정된 반이 없습니다. (배정은 [시간표]에서 관리자·실장이 설정합니다)</div>`;
     }
@@ -1838,9 +1880,9 @@ function subjectTeachersForClass(a, className){
   const days=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
   days.forEach(d=>{
     const wi=wordDutyForDay(c,d);
-    if(wi!=null){ const t=(store.teachers[a]||[])[Number(wi)]; if(t) excludeNames.add(t.name); }
+    if(wi!=null){ const t=teacherByDutyVal(a,wi); if(t) excludeNames.add(t.name); }
   });
-  if(c.wordDuty!=null && c.wordDuty!==''){ const t=(store.teachers[a]||[])[Number(c.wordDuty)]; if(t) excludeNames.add(t.name); }
+  if(c.wordDuty!=null && c.wordDuty!==''){ const t=teacherByDutyVal(a,c.wordDuty); if(t) excludeNames.add(t.name); }
   const teacherNames=new Set();
   (c.subjects||[]).forEach(s=>{ if(s.teacher && !excludeNames.has(s.teacher)) teacherNames.add(s.teacher); });
   const idxs=[];
@@ -2013,6 +2055,14 @@ function bindConsult(){
 const WD=['일','월','화','수','목','금','토'];
 const WORK={ebest:{s:13.5,e:22,label:'1:30 ~ 10:00'}, icon:{s:14.5,e:21,label:'2:30 ~ 9:00'}};
 function timeOf(c){ return store.timeedit[ckey(c)] || c.time || ''; }
+function timeOfDay(c, wd){ return (c.timeByDay && c.timeByDay[wd]) || timeOf(c); }
+function updateTimeDay(a,m,id,day,value){
+  const c=findClassById(a,m,id); if(!c) return;
+  c.timeByDay=c.timeByDay||{};
+  if(value==='') delete c.timeByDay[day]; else c.timeByDay[day]=value;
+  c.updatedAt=Date.now();
+  save(); render(true);
+}
 function parseRange(s){
   if(!s) return null;
   s=String(s).replace(/\s/g,'');
@@ -2037,6 +2087,14 @@ function subjOnDay(s,d){ return !s.day || String(s.day).includes(d); } // s.day�
 function wordDutyForDay(c,wd){
   if(c.wordDutyByDay && c.wordDutyByDay[wd]!=null && c.wordDutyByDay[wd]!=='') return c.wordDutyByDay[wd];
   return (c.wordDuty!=null && c.wordDuty!=='') ? c.wordDuty : null;
+}
+// 저장된 담당값(선생님 id, 또는 예전 데이터의 인덱스)으로부터 실제 선생님을 찾는다.
+function teacherByDutyVal(academy, val){
+  if(val==null || val==='') return null;
+  const arr=store.teachers[academy]||[];
+  let t=arr.find(x=>x.id===val);
+  if(!t && !isNaN(val)) t=arr[Number(val)]; // 혹시 아직 마이그레이션 안 된 예전(인덱스) 값 대비
+  return t||null;
 }
 function updateWordDutyDay(a,m,id,day,value){
   const c=findClassById(a,m,id); if(!c) return;
@@ -2093,7 +2151,7 @@ function renderTimeline(list){
   const wd=wdOf(state.date);
   const mine=list.filter(c=>classMeets(c,wd)&&teacherTeaches(c,lt));
   const timed=[], untimed=[];
-  mine.forEach(c=>{ const r=parseRange(timeOf(c)); if(r) timed.push({c,r,t:timeOf(c)}); else untimed.push(c); });
+  mine.forEach(c=>{ const r=parseRange(timeOfDay(c,wd)); if(r) timed.push({c,r,t:timeOfDay(c,wd)}); else untimed.push(c); });
   timed.sort((x,y)=>x.r[0]-y.r[0]);
   let rows='', cur=wk.s;
   const gapRow=(from,to)=>`<div class="tlrow"><div class="tlt"><span class="tltime">${fmtH(from)}</span></div>
@@ -2201,7 +2259,23 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-  return h+staySection+wtSection;
+  // 결석생 숙제 확인 — 실장·관리자 전용 요약 (담당 선생님이 입력한 숙제/메모를 한 곳에서 확인)
+  const absentHwList=[];
+  cls.forEach(c=>{
+    const k=ckey(c);
+    const recs=at[k]||{};
+    (c.students||[]).forEach(sname=>{
+      if(recs[sname]==='결'){
+        const hrec=(hw[k]||{})[sname]||{};
+        absentHwList.push({className:c.name, academy:c.academy, student:sname, note:hrec.note||'', done:!!hrec.done});
+      }
+    });
+  });
+  const absentHwSection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b"><h3>📕 오늘 결석생 숙제 확인 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명, 실장·관리자만 보임)</span></h3>
+    <div style="padding:0 16px 14px">
+      ${absentHwList.length?absentHwList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.note?esc(x.note):'<span style="color:#c3c9d6">입력된 숙제 메모 없음</span>'} ${x.done?' · <span style="color:var(--ok);font-weight:700">숙제 완료 체크됨</span>':''}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
+    </div></div>`:'';
+  return h+staySection+absentHwSection+wtSection;
 }
 function bindToday(){
   const v=document.getElementById('view');
@@ -2486,7 +2560,7 @@ function autoLessons(who, date){
     }
     if(!subs.length) return;
     const asg=((((store.homework[date]||{})[ckey(c)])||{})['_assign']||{}).note||'';
-    subs.forEach(s=>rows.push({cls:c.name,time:timeOf(c),book:s.book||'',lesson:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''}));
+    subs.forEach(s=>rows.push({cls:c.name,time:timeOfDay(c,wd),book:s.book||'',lesson:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''}));
   });
   return rows;
 }
@@ -2655,33 +2729,34 @@ function wpGet(who, wkStart, days){
   }
   return store.weekplan[who][wkStart];
 }
-function weekPlanForm(who, days){
+function weekPlanForm(who, days, readOnly){
   const w=whoTeacher(who); const wp=wpGet(who,days[0],days);
   const mo=Number(days[0].slice(5,7));
   let h=`<div class="mypanel" style="border-top-color:${w.t.color}">
     <h2><span class="tdot" style="background:${w.t.color}"></span>주간 진도계획표 — ${esc(w.t.name)} 선생님
-      <span style="font-weight:400;font-size:.78rem;color:var(--sub)">${days[0]} ~ ${days[5]} · 자동 저장</span>
-      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${submitBtn('weekplan',who,days[0],w.t.color)}<button class="btn small" id="wpRefill">자료로 다시 채우기</button></span></h2>
+      <span style="font-weight:400;font-size:.78rem;color:var(--sub)">${days[0]} ~ ${days[5]} · ${readOnly?'다른 선생님 계획표 (조회 전용)':'자동 저장'}</span>
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${readOnly?'':submitBtn('weekplan',who,days[0],w.t.color)+'<button class="btn small" id="wpRefill">자료로 다시 채우기</button>'}</span></h2>
     <div style="overflow-x:auto;margin-top:8px"><table style="min-width:900px;border-collapse:collapse">
     <thead><tr>${['날짜','반명','교재','진도','테스트','과제',mo+'월 진도',''].map(x=>`<th style="background:var(--ink);color:#fff;padding:6px 8px;font-size:.72rem;text-align:center">${x}</th>`).join('')}</tr></thead><tbody>`;
   wp.rows.forEach((r,i)=>{
     const wd=r.date?wdOf(r.date):'';
-    const cell=(f,w2)=>`<td style="border:1px solid #e7eaf2;padding:2px"><input type="text" class="wp-c" data-i="${i}" data-f="${f}" value="${esc(r[f]||'')}" style="width:${w2||'100%'};border:none;padding:5px 7px;font-family:inherit;font-size:.8rem;background:transparent;text-align:center"></td>`;
+    const cell=(f,w2)=>`<td style="border:1px solid #e7eaf2;padding:2px"><input type="text" class="wp-c" data-i="${i}" data-f="${f}" value="${esc(r[f]||'')}" ${readOnly?'disabled':''} style="width:${w2||'100%'};border:none;padding:5px 7px;font-family:inherit;font-size:.8rem;background:transparent;text-align:center"></td>`;
     h+=`<tr>
-      <td style="border:1px solid #e7eaf2;background:${WDCOLOR[wd]||'#fff'};padding:2px"><input type="date" class="wp-c" data-i="${i}" data-f="date" value="${esc(r.date||'')}" style="border:none;background:transparent;font-family:inherit;font-size:.78rem;font-weight:700"></td>
+      <td style="border:1px solid #e7eaf2;background:${WDCOLOR[wd]||'#fff'};padding:2px"><input type="date" class="wp-c" data-i="${i}" data-f="date" value="${esc(r.date||'')}" ${readOnly?'disabled':''} style="border:none;background:transparent;font-family:inherit;font-size:.78rem;font-weight:700"></td>
       ${cell('cls','86px')}${cell('book')}${cell('prog')}${cell('test','96px')}${cell('hw')}${cell('mprog','80px')}
-      <td style="border:1px solid #e7eaf2;text-align:center"><button class="del wp-del" data-i="${i}">✕</button></td></tr>`;
+      <td style="border:1px solid #e7eaf2;text-align:center">${readOnly?'':'<button class="del wp-del" data-i="'+i+'">✕</button>'}</td></tr>`;
   });
   h+=`</tbody></table></div>
     <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="btn small" id="wpAdd">+ 줄 추가</button>
-      <span style="font-size:.74rem;color:#8b93a7;align-self:center">진도의 "→" 뒷부분(월말 목표)이 ${mo}월 진도 칸에 자동으로 들어갑니다 · 테스트는 직접 입력</span>
+      ${readOnly?'':'<button class="btn small" id="wpAdd">+ 줄 추가</button>'}
+      <span style="font-size:.74rem;color:#8b93a7;align-self:center">${readOnly?'다른 선생님의 계획표는 조회만 가능합니다.':'진도의 "→" 뒷부분(월말 목표)이 '+mo+'월 진도 칸에 자동으로 들어갑니다 · 테스트는 직접 입력'}</span>
     </div>
     </div>`;
   return h;
 }
-function bindWeekPlan(who, days){
+function bindWeekPlan(who, days, readOnly){
   const v=document.getElementById('view'); const wp=wpGet(who,days[0],days);
+  if(readOnly) return; // 조회 전용 — 편집 이벤트 바인딩하지 않음
   v.querySelectorAll('.wp-c').forEach(inp=>inp.onchange=()=>{
     wp.rows[Number(inp.dataset.i)][inp.dataset.f]=inp.value; save();
     if(inp.dataset.f==='date') render(true);
@@ -2728,9 +2803,12 @@ function renderReport(){
   state.rkind=state.rkind||'daily';
   const lt=loginTeacher();
   const days=weekOf(state.date);
-  const who=curWho(); const w=whoTeacher(who);
+  const canBrowseOthers = !lt || state.rkind==='weekly'; // 주간 진도계획표는 모든 선생님이 다른 선생님 것도 조회 가능
+  const who = (canBrowseOthers && state.wlWho) ? state.wlWho : curWho();
+  const w=whoTeacher(who);
+  const viewingOthers = lt && !isMgr() && who!==whoKey(lt); // 실장 미만이 남의 계획표를 보는 중 → 읽기 전용
   let pick='';
-  if(!lt){
+  if(canBrowseOthers){
     let opts='';
     for(const a of academies()) store.teachers[a].forEach((t,i)=>{
       opts+=`<option value="${a}|${i}" ${who===a+'|'+i?'selected':''}>${MODE==='all'?AC[a].label+' · ':''}${esc(t.name)}</option>`;});
@@ -2748,7 +2826,7 @@ function renderReport(){
   </div>`;
   if(!w) return h+'<div class="empty">선생님을 먼저 등록해주세요 (설정 탭).</div>';
   if(state.rkind==='daily') h+=journalForm(who, state.date);
-  else h+=weekPlanForm(who, days);
+  else h+=weekPlanForm(who, days, viewingOthers);
   return h;
 }
 function bindReport(){
@@ -2760,10 +2838,13 @@ function bindReport(){
   const wp=v.querySelector('#wkPrev'); if(wp) wp.onclick=()=>shift(-7);
   const wn=v.querySelector('#wkNext'); if(wn) wn.onclick=()=>shift(7);
   const ws=v.querySelector('#wlWho'); if(ws) ws.onchange=()=>{state.wlWho=ws.value; render();};
-  const who=curWho();
+  const lt=loginTeacher();
+  const canBrowseOthers = !lt || state.rkind==='weekly';
+  const who = (canBrowseOthers && state.wlWho) ? state.wlWho : curWho();
+  const viewingOthers = lt && !isMgr() && who!==whoKey(lt);
   if(whoTeacher(who)){
     if(state.rkind==='daily') bindJournal(who, state.date);
-    else bindWeekPlan(who, weekOf(state.date));
+    else bindWeekPlan(who, weekOf(state.date), viewingOthers);
   }
 }
 
@@ -2832,7 +2913,7 @@ function downloadMasterXlsx(aOnly){
     (dataFor(a,use)||[]).forEach(c=>{
       let first=true;
       const subs=(c.subjects&&c.subjects.length)?c.subjects:[{}];
-      const wdName=(c.wordDuty!=null&&c.wordDuty!=='')?((store.teachers[a]||[])[Number(c.wordDuty)]||{}).name||'':'';
+      const wdName=(c.wordDuty!=null&&c.wordDuty!=='')?(teacherByDutyVal(a,c.wordDuty)||{}).name||'':'';
       subs.forEach(s=>{
         aoa.push([first?c.name:'', first?(c.dept||''):'', first?cdays(c):'', first?timeOf(c):'',
           first?(c.students||[]).join(', '):'', first?wdName:'', s.subject||'', s.day||'', s.time||'', s.teacher||'',
@@ -4122,9 +4203,12 @@ function cleanupStaleJasup2608(){
       c.subjects=c.subjects.filter(s=>!(s.subject&&s.subject.startsWith('자습')));
       if((hadJasup||c.wordDuty==null) && dutyMap[c.name]){
         const days=dutyMap[c.name];
-        const vals=[...new Set(Object.values(days))];
+        const teachersArr=store.teachers[c.academy]||[];
+        const idToDays={};
+        for(const d in days){ const t=teachersArr[Number(days[d])]; if(t) idToDays[d]=t.id; }
+        const vals=[...new Set(Object.values(idToDays))];
         if(vals.length===1) c.wordDuty=vals[0];
-        else { c.wordDutyByDay=days; const counts={}; Object.values(days).forEach(v=>counts[v]=(counts[v]||0)+1); c.wordDuty=+Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0]; }
+        else { c.wordDutyByDay=idToDays; const counts={}; Object.values(idToDays).forEach(v=>counts[v]=(counts[v]||0)+1); c.wordDuty=Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0]; }
       }
     });
   }
