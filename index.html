@@ -371,6 +371,14 @@ if(!store.teachersMigrated2608){
   ['Daniel','Raina'].forEach(nm=>{ if(!eb.some(t=>t.name===nm)) eb.push({name:nm,color:PALETTE[eb.length%PALETTE.length]}); });
   store.teachersMigrated2608=true;
 }
+// 선생님 각각에 고유 id 부여(한 번만) — 기기 간 병합 시 "기본값 vs 실제 서버 자료"를 정확히 구분하기 위함
+// 주의: 어떤 기기에서 처음 열어도 같은 이름·같은 순서면 같은 id가 나오도록 (랜덤 X, 학원+순서 기반) — 그래야 서버 데이터와 정확히 매칭되어 병합됨
+if(!store.teachersIdMigrated){
+  for(const a in store.teachers){
+    (store.teachers[a]||[]).forEach((t,idx)=>{ if(!t.id) t.id='teacher_'+a+'_'+idx; });
+  }
+  store.teachersIdMigrated=true;
+}
 let saveTimer=null;
 function save(){ localStorage.setItem(KEY, JSON.stringify(store));
   const el=document.getElementById('saved'); el.classList.add('show');
@@ -615,7 +623,7 @@ function updateSubjectField(a,m,id,idx,field,value){
 
 /* ---------- 상태 ---------- */
 const todayISO = ()=>new Date().toISOString().slice(0,10);
-let state = {tab:'dash', sub:'class', ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:(allDataMonths().slice(-1)[0]||'2026-07'), tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
+let state = {tab:'today', sub:'class', ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:(allDataMonths().slice(-1)[0]||'2026-07'), tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
 
 /* ---------- 로그인 ---------- */
 function isMgr(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='실장'); }
@@ -3726,15 +3734,16 @@ function bindSet(){
     if(!confirm(`${mLabel(m)} ${AC[a].label} 업로드 자료를 삭제할까요?`)) return;
     delete store.uploads[k]; save(); refreshMonthSel(); render();
   });
-  v.querySelectorAll('.tname').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; store.teachers[inp.dataset.a][inp.dataset.i].name=inp.value.trim()||'이름없음'; save(); render(true); });
-  v.querySelectorAll('.tpw').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; store.teachers[inp.dataset.a][inp.dataset.i].pw=inp.value; save(); });
+  v.querySelectorAll('.tname').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.name=inp.value.trim()||'이름없음'; t.updatedAt=Date.now(); save(); render(true); });
+  v.querySelectorAll('.tpw').forEach(inp=>inp.onchange=()=>{ if(!isAdminRole())return; const t=store.teachers[inp.dataset.a][inp.dataset.i]; t.pw=inp.value; t.updatedAt=Date.now(); save(); });
   v.querySelectorAll('.trole').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
     const t=store.teachers[b.dataset.a][b.dataset.i];
     t.role = t.role==='실장' ? '' : '실장';
+    t.updatedAt=Date.now();
     save(); render(true);
   });
-  v.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{ if(!isAdminRole())return; store.teachers[s.dataset.a][s.dataset.i].color=s.dataset.c; save(); render(true); });
+  v.querySelectorAll('.sw').forEach(s=>s.onclick=()=>{ if(!isAdminRole())return; const t=store.teachers[s.dataset.a][s.dataset.i]; t.color=s.dataset.c; t.updatedAt=Date.now(); save(); render(true); });
   v.querySelectorAll('.del[data-a]').forEach(b=>b.onclick=()=>{
     if(!isAdminRole())return;
     const a=b.dataset.a, i=Number(b.dataset.i);
@@ -3751,7 +3760,7 @@ function bindSet(){
     if(!isAdminRole())return;
     const a=b.dataset.add; const used=store.teachers[a].map(t=>t.color);
     const c=PALETTE.find(p=>!used.includes(p))||PALETTE[store.teachers[a].length%PALETTE.length];
-    store.teachers[a].push({name:'새 선생님',color:c}); save(); render(true);
+    store.teachers[a].push({id:'teacher_'+a+'_new_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), name:'새 선생님',color:c,updatedAt:Date.now()}); save(); render(true);
   });
   const exp=v.querySelector('#exp');
   if(exp) exp.onclick=()=>{
