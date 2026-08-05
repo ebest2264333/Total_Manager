@@ -367,6 +367,8 @@ if(!store.uploadTombstones) store.uploadTombstones={};
 if(!store.uploadStamps) store.uploadStamps={};
 if(!store.fieldStamps) store.fieldStamps={};
 if(!store.wordbookOptions) store.wordbookOptions=['초등 베이직','초등 컴플리트','중등 실력','중등 고난도','고등 베이직','수능 2000','하이스트','하이퍼'];
+if(!store.testPaperOptions) store.testPaperOptions=['단원평가','미니테스트','누적테스트','재시험지'];
+if(!store.giveSel) store.giveSel={};
 if(!store.submits) store.submits=[];
 if(store.adminEmail==null) store.adminEmail='';
 if(!store.daysedit) store.daysedit={};
@@ -412,10 +414,10 @@ if(!store.admissionConsults) store.admissionConsults=[];
 if(!store.wordTests) store.wordTests=[];
 if(!store.sharedAt) store.sharedAt=0;
 if(!store.inboxDone) store.inboxDone={};
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions'];
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel'];
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
-const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions'];
+const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions'];
 // 출결·숙제 등은 여러 선생님이 동시에 서로 다른 학생을 입력하므로 기존처럼 병합해야 안전하다.
 function isReplaceField(f){ return REPLACE_FIELDS.includes(f); }
 // 각 항목을 마지막으로 편집한 시각 — 교체 방식에서 "누가 더 최신인지" 판단에 사용
@@ -1520,17 +1522,17 @@ function renderTimetableWeek(list){
   if(!times.length){
     grid='<div class="empty">시간이 입력된 반·과목이 없습니다. 반 편집에서 시간을 입력해주세요.</div>';
   } else {
-    grid=`<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
+    grid=`<div style="overflow:auto;max-height:74vh;border:1px solid var(--line);border-radius:10px"><table style="border-collapse:collapse;width:100%;min-width:${(showDays.length+1)*130}px">
       <thead><tr>
-        <th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;left:0;z-index:1">시간</th>
-        ${showDays.map(d=>`<th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc">${d}요일</th>`).join('')}
+        <th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;left:0;z-index:3">시간</th>
+        ${showDays.map(d=>`<th style="border:1px solid var(--line);padding:6px 10px;background:#f6f8fc;position:sticky;top:0;z-index:2">${d}요일</th>`).join('')}
       </tr></thead><tbody>
       ${times.map(t=>{
         const cells=showDays.map(d=>{
           const cs=occ.filter(o=>o.r && o.r[0]===t && o.d===d);
           return `<td style="border:1px solid var(--line);padding:5px;vertical-align:top;min-width:120px">${cs.map(chip).join('')}</td>`;
         }).join('');
-        return `<tr><td style="border:1px solid var(--line);padding:6px 10px;font-weight:800;color:var(--sub);white-space:nowrap;background:#fafbfd;position:sticky;left:0">${fmtH(t)}</td>${cells}</tr>`;
+        return `<tr><td style="border:1px solid var(--line);padding:6px 10px;font-weight:800;color:var(--sub);white-space:nowrap;background:#fafbfd;position:sticky;left:0;z-index:1">${fmtH(t)}</td>${cells}</tr>`;
       }).join('')}
       </tbody></table></div>`;
   }
@@ -2427,18 +2429,46 @@ function bindBook(){
   v.querySelectorAll('[data-baapply]').forEach(btn=>btn.onclick=()=>bulkAssignBook(btn.dataset.baapply));
 }
 /* ---------- 교재 배부 ---------- */
+function giveBlock(c, k, type, label, selected, options){
+  // type: 'wb'(단어장) or 'tp'(단어 시험지) — 과목별 교재 배부와 같은 방식으로, 선택한 항목 기준으로 배부 체크를 한다
+  const selRow=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <b style="font-size:.86rem">${label}</b>
+    <select class="givesel" data-k="${esc(k)}" data-type="${type}" style="padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.83rem">
+      <option value="">선택 안 함</option>
+      ${options.map(o=>`<option value="${esc(o)}" ${selected===o?'selected':''}>${esc(o)}</option>`).join('')}
+    </select>
+  </div>`;
+  if(!selected) return `<div style="margin-bottom:14px;padding:10px 12px;background:#f6f8fc;border-radius:10px">${selRow}<div style="font-size:.78rem;color:#8b93a7">배부할 ${label.replace(/^\S+\s/,'')}을(를) 선택하면 학생 체크칸이 나타납니다. (목록은 [설정]에서 추가·수정)</div></div>`;
+  const subj=type+':'+selected;
+  const g=bookGivenFor(k, subj);
+  const total=(c.students||[]).length;
+  const done=(c.students||[]).filter(stu=>g.students[stu]).length;
+  return `<div style="margin-bottom:14px;padding:10px 12px;background:#f6f8fc;border-radius:10px">
+    ${selRow}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
+      <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}" style="margin-left:auto">✔ 체크된 학생 배부 처리</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${(c.students||[]).map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
+        <input type="checkbox" class="bgchk" data-k="${esc(k)}" data-subj="${esc(subj)}" data-stu="${esc(stu)}" ${g.students[stu]?'checked':''}>${esc(studentDisplayName(c.academy,stu))}${g.students[stu]?' ✔':''}</label>`).join('')}
+    </div>
+  </div>`;
+}
 function renderBookGive(list){
   const lt=loginTeacher();
-  let cls=list.filter(c=>(c.subjects||[]).some(s=>s.book && !s.book.startsWith('\u3007')));
+  let cls=list.filter(c=>c.students && c.students.length); // 단어장·시험지 배부는 과목 교재 등록 여부와 상관없이 학생이 있는 반이면 대상
   if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
-  let h=`<div class="todaybar"><span class="wd">\uD83D\uDCE6 교재 배부</span>
-    ${lt?`<span class="mytag" style="background:${lt.t.color}">\uD83D\uDC64 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
-    <span style="font-size:.76rem;color:var(--sub)">학생을 체크하고 [배부 처리]를 누르면 반교재·연간교재 탭에도 실시간으로 반영됩니다</span></div>`;
-  if(!cls.length) return h+'<div class="empty">교재가 등록된 반이 없습니다.</div>';
+  let h=`<div class="todaybar"><span class="wd">📦 교재 배부</span>
+    ${lt?`<span class="mytag" style="background:${lt.t.color}">👤 ${esc(lt.t.name)}</span><label class="hwlab"><input type="checkbox" id="bgMyOnly" ${state.myOnly?'checked':''}> 내 수업만 보기</label>`:''}
+    <span style="font-size:.76rem;color:var(--sub)">학생을 체크하고 [배부 처리]를 누르면 반교재·연간교재 탭에도 실시간으로 반영됩니다. 실장 이상 누구나 입력할 수 있어요.</span></div>`;
+  if(!cls.length) return h+'<div class="empty">학생이 등록된 반이 없습니다.</div>';
+  const wbOpts=(store.wordbookOptions&&store.wordbookOptions.length)?store.wordbookOptions:WORDBOOK_OPTIONS_DEFAULT;
+  const tpOpts=(store.testPaperOptions&&store.testPaperOptions.length)?store.testPaperOptions:[];
   cls.forEach(c=>{
     const k=ckey(c);
-    const subs=(c.subjects||[]).filter(s=>s.book && !s.book.startsWith('\u3007'));
-    if(!subs.length) return;
+    const subs=(c.subjects||[]).filter(s=>s.book && !s.book.startsWith('〇'));
+    store.giveSel[k]=store.giveSel[k]||{};
     h+=`<div class="ysec"><h3>${esc(c.name)} ${bdg(c.academy)}</h3><div style="padding:0 16px 14px">`;
     subs.forEach(s=>{
       const subj=s.subject||'-';
@@ -2450,14 +2480,16 @@ function renderBookGive(list){
           <b style="font-size:.86rem">${esc(subj)}</b>
           <span style="font-size:.8rem;color:var(--sub)">${esc(s.book)}</span>
           <span style="font-size:.76rem;font-weight:800;color:${done===total&&total?'var(--ok)':'var(--sub)'}">배부 ${done}/${total}</span>
-          <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}" style="margin-left:auto">\u2714 체크된 학생 배부 처리</button>
+          <button class="btn small" data-bgapply="${esc(k)}|${esc(subj)}" style="margin-left:auto">✔ 체크된 학생 배부 처리</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
           ${(c.students||[]).map(stu=>`<label style="display:flex;align-items:center;gap:4px;font-size:.8rem;background:${g.students[stu]?'#e6f6ef':'#fff'};border:1px solid ${g.students[stu]?'var(--ok)':'var(--line)'};border-radius:7px;padding:4px 8px;cursor:pointer">
-            <input type="checkbox" class="bgchk" data-k="${esc(k)}" data-subj="${esc(subj)}" data-stu="${esc(stu)}" ${g.students[stu]?'checked':''}>${esc(studentDisplayName(c.academy,stu))}${g.students[stu]?' \u2714':''}</label>`).join('')}
+            <input type="checkbox" class="bgchk" data-k="${esc(k)}" data-subj="${esc(subj)}" data-stu="${esc(stu)}" ${g.students[stu]?'checked':''}>${esc(studentDisplayName(c.academy,stu))}${g.students[stu]?' ✔':''}</label>`).join('')}
         </div>
       </div>`;
     });
+    h+=giveBlock(c, k, 'wb', '📖 단어장', store.giveSel[k].wordbook||'', wbOpts);
+    h+=giveBlock(c, k, 'tp', '📝 단어 시험지', store.giveSel[k].testpaper||'', tpOpts);
     h+='</div></div>';
   });
   return h;
@@ -2465,6 +2497,12 @@ function renderBookGive(list){
 function bindBookGive(){
   const v=document.getElementById('view');
   const mo=v.querySelector('#bgMyOnly'); if(mo) mo.onchange=()=>{state.myOnly=mo.checked; render();};
+  v.querySelectorAll('.givesel').forEach(sel=>sel.onchange=()=>{
+    const k=sel.dataset.k, type=sel.dataset.type;
+    store.giveSel[k]=store.giveSel[k]||{};
+    store.giveSel[k][type==='wb'?'wordbook':'testpaper']=sel.value;
+    save(); render(true);
+  });
   v.querySelectorAll('.bgchk').forEach(cb=>cb.onchange=()=>{
     const k=cb.dataset.k, subj=cb.dataset.subj, stu=cb.dataset.stu;
     store.bookGiven[k]=store.bookGiven[k]||{};
@@ -2481,7 +2519,7 @@ function bindBookGive(){
     checks.forEach(cb=>{ store.bookGiven[k][subj].students[cb.dataset.stu]=true; });
     store.bookGiven[k][subj].updatedAt=Date.now();
     save(); render(true);
-    toast('\uD83D\uDCE6 교재 배부 처리 완료 · '+checks.length+'명');
+    toast('📦 교재 배부 처리 완료 · '+checks.length+'명');
   });
 }
 /* ---------- 단어 범위 (월별, 학생×날짜 그리드) ---------- */
@@ -5079,13 +5117,23 @@ function renderSet(){
     <button class="btn" style="color:#c0392b;border-color:#e7b3ab;font-weight:800" id="nuclearResetBtn">🚨 ${academies().map(a=>AC[a].label).join('/')} 전체 삭제 + 서버 강제 덮어쓰기</button>
   </div>`;
   if(!isTeacher) h+=`<div class="setsec"><h3>📖 단어장 목록 관리</h3>
-    <div class="desc">단어시험 입력 시 선택할 수 있는 단어장 목록입니다. 추가·삭제하면 모든 선생님 화면에 바로 반영됩니다.</div>
+    <div class="desc">단어시험 입력·교재 배부 시 선택할 수 있는 단어장 목록입니다. 추가·삭제하면 모든 선생님 화면에 바로 반영됩니다.</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
       ${(store.wordbookOptions&&store.wordbookOptions.length?store.wordbookOptions:WORDBOOK_OPTIONS_DEFAULT).map((o,i)=>`<span class="stu">${esc(o)} <b data-wbdel="${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')}
     </div>
     <div style="display:flex;gap:6px">
       <input type="text" id="wbAddIn" placeholder="새 단어장 이름 (예: 중등 심화)" style="flex:1;min-width:140px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
       <button class="btn small" id="wbAddBtn">+ 추가</button>
+    </div>
+  </div>`;
+  if(!isTeacher) h+=`<div class="setsec"><h3>📝 단어 시험지 목록 관리</h3>
+    <div class="desc">[교재 배부] 탭에서 선택할 수 있는 단어 시험지 목록입니다. 추가·삭제하면 모든 선생님 화면에 바로 반영됩니다.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+      ${(store.testPaperOptions||[]).map((o,i)=>`<span class="stu">${esc(o)} <b data-tpdel="${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('') || '<span style="font-size:.82rem;color:#8b93a7">등록된 시험지가 없습니다.</span>'}
+    </div>
+    <div style="display:flex;gap:6px">
+      <input type="text" id="tpAddIn" placeholder="새 시험지 이름 (예: 단원평가 3회)" style="flex:1;min-width:140px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
+      <button class="btn small" id="tpAddBtn">+ 추가</button>
     </div>
   </div>`;
   h+=`<div class="setsec"><h3>데이터 백업</h3>
@@ -5345,6 +5393,22 @@ function bindSet(){
     if(!val) return;
     if(!store.wordbookOptions||!store.wordbookOptions.length) store.wordbookOptions=[...WORDBOOK_OPTIONS_DEFAULT];
     if(!store.wordbookOptions.includes(val)) store.wordbookOptions.push(val);
+    save(); render(true);
+  };
+  v.querySelectorAll('[data-tpdel]').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole())return;
+    const i=Number(b.dataset.tpdel);
+    if(!store.testPaperOptions) store.testPaperOptions=[];
+    store.testPaperOptions.splice(i,1);
+    save(); render(true);
+  });
+  const tpAddBtn=v.querySelector('#tpAddBtn');
+  if(tpAddBtn) tpAddBtn.onclick=()=>{
+    if(!isAdminRole())return;
+    const inp=v.querySelector('#tpAddIn'); const val=(inp&&inp.value||'').trim();
+    if(!val) return;
+    if(!store.testPaperOptions) store.testPaperOptions=[];
+    if(!store.testPaperOptions.includes(val)) store.testPaperOptions.push(val);
     save(); render(true);
   };
   const exp=v.querySelector('#exp');
