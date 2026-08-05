@@ -3022,6 +3022,15 @@ function matchStudentByRosterName(academy, sname){
   }
   return null;
 }
+function isWithdrawnRosterName(academy, sname){
+  // 반 명단에는 남아있지만(과거 기록 보존용) 학생명단 상태가 '퇴원'인 이름 — 오늘 기록 등 활성 화면에서는 제외 대상으로 판별
+  const st=matchStudentByRosterName(academy, sname);
+  return !!(st && st.status==='퇴원');
+}
+function activeStudents(c){
+  // 반 배정에서 퇴원생을 제외한 "현재 활성" 학생 명단 — 반 카드 자체의 c.students 배열은 그대로 두고(과거 기록 보존), 화면 표시만 걸러준다
+  return (c.students||[]).filter(sname=>!isWithdrawnRosterName(c.academy, sname));
+}
 function todayClasses(list){
   const wd=wdOf(state.date);
   let cls=list.filter(c=>classMeets(c,wd));
@@ -3194,7 +3203,7 @@ function renderToday(list){
   const applyRosterAbsence=(cl)=>{
     const allKeys=attKeysFor(cl, wd);
     const k=ckey(cl);
-    (cl.students||[]).forEach(sname=>{
+    activeStudents(cl).forEach(sname=>{
       const st=matchStudentByRosterName(cl.academy, sname);
       if(!st || !st.absFrom) return;
       const to=st.absTo||st.absFrom;
@@ -3217,7 +3226,7 @@ function renderToday(list){
     const markWordTestAbsent=(cl)=>{
       const allKeys=attKeysFor(cl, wd);
       if(!allKeys.length) return;
-      (cl.students||[]).forEach(sname=>{
+      activeStudents(cl).forEach(sname=>{
         const allAbsentToday=allKeys.every(({key})=>((at[key]||{})[sname])==='결');
         if(!allAbsentToday) return;
         const st=matchStudentByRosterName(cl.academy, sname);
@@ -3252,8 +3261,9 @@ function renderToday(list){
     const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
     const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
     const attMulti=attKeys.length>1;
-    const present=(c.students||[]).filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
-    const hwdone=(c.students||[]).filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
+    const cStudents=activeStudents(c); // 퇴원생은 오늘 기록에서 제외 (반 배정 취소)
+    const present=cStudents.filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
+    const hwdone=cStudents.filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
     const asg=((hw[k]||{})['_assign']||{}).note||'';
     const ref=daySubjects.filter(s=>s.hw).map(s=>`${esc(s.subject)}: ${esc(s.hw)}`).join('  ·  ');
     const asgBox=`<div style="padding:9px 0 4px;border-bottom:1px solid #f1f3f8">
@@ -3328,34 +3338,35 @@ function renderToday(list){
       ${stayRow}`;
     };
     let body='';
-    if(c.students&&c.students.length){
-      body=asgBox+c.students.map(s=>studentAttRow(s,k,attKeys)).join('');
+    if(cStudents.length){
+      body=asgBox+cStudents.map(s=>studentAttRow(s,k,attKeys)).join('');
     } else {
       const cm=(hw[k]||{})['_class']||{};
       body=asgBox+`<div style="padding:8px 0"><input type="text" class="hwnote" data-k="${esc(k)}" data-s="_class" style="width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="수업 · 숙제 메모 (명단 자료가 없는 반)" value="${esc(cm.note||'')}"></div>`;
     }
     // 합반(같이 수업하는 다른 반) 상대가 있으면, 그 반 학생들도 이 카드 안에 같이 보여줘서 한 번에 출석 체크할 수 있게 한다
     const mergedPartner=mergedPartnerClass(c);
-    if(mergedPartner && classMeets(mergedPartner, wd) && mergedPartner.students && mergedPartner.students.length){
+    const partnerStudents=mergedPartner?activeStudents(mergedPartner):[];
+    if(mergedPartner && classMeets(mergedPartner, wd) && partnerStudents.length){
       const pk=ckey(mergedPartner);
       let pAttKeys=attKeysFor(mergedPartner, wd);
       const pMySubjSet=mySubjectKeys(mergedPartner, wd, lt);
       if(pMySubjSet){ const pf=pAttKeys.filter(x=>x.subject==null||pMySubjSet.has(x.subject)); if(pf.length) pAttKeys=pf; }
-      body+=`<div style="margin:10px 0 4px;padding:6px 10px;background:#eef0ff;border-radius:8px;font-size:.8rem;font-weight:800;color:#4338ca">🔗 합반 — ${esc(mergedPartner.name)} 학생 (${mergedPartner.students.length}명)</div>`;
-      body+=mergedPartner.students.map(s=>studentAttRow(s,pk,pAttKeys)).join('');
+      body+=`<div style="margin:10px 0 4px;padding:6px 10px;background:#eef0ff;border-radius:8px;font-size:.8rem;font-weight:800;color:#4338ca">🔗 합반 — ${esc(mergedPartner.name)} 학생 (${partnerStudents.length}명)</div>`;
+      body+=partnerStudents.map(s=>studentAttRow(s,pk,pAttKeys)).join('');
     }
     const cardOpen = state.todayOpen && state.todayOpen[k];
     h+=`<div class="ccard ${cardOpen?'open':''}" id="tc-${esc(k).replace(/[^0-9A-Za-z가-힣]/g,'_')}" style="border-left-color:${mine&&lt?lt.t.color:AC[c.academy].color}">
       <div class="chead" data-toggle="${esc(k)}"><span class="arrow">▶</span>
         <h3>${hl(c.name)}${subjNames.length?' · '+esc(subjNames.join(', ')):''}</h3>${bdg(c.academy)}
         <span style="font-size:.76rem;color:var(--sub)">${esc(cdays(c))}${teas.length?' · 담당: '+esc(teas.join(', ')):''}</span>
-        ${c.students&&c.students.length?`<span class="prg">출석 ${present}/${c.students.length} · 숙제 ${hwdone}/${c.students.length}</span>`:''}
+        ${cStudents.length?`<span class="prg">출석 ${present}/${cStudents.length} · 숙제 ${hwdone}/${cStudents.length}</span>`:''}
       </div><div class="cbody">${body}</div></div>`;
   });
   // 오늘 수업 있는 학생 중 "오늘 공지"(전화 상담 등으로 알게 된 급한 특이사항)가 걸려있는 학생을 모아서 맨 위에 보여준다
   const alertList=[]; const seenAlert=new Set();
   cls.forEach(c=>{
-    (c.students||[]).forEach(sname=>{
+    activeStudents(c).forEach(sname=>{
       const key=c.academy+'|'+sname;
       if(seenAlert.has(key)) return;
       // 반 명단에는 "Kayla(유주)"·"호진(Jin)"처럼 순서가 다른 예전 자료도 있어서, 양쪽 다 비교해서 찾는다
@@ -3399,8 +3410,13 @@ function renderToday(list){
   const collectAbsent=(cl)=>{
     const k=ckey(cl);
     // 과목마다 담당 선생님이 다를 수 있어, 카톡 전송 여부는 과목별로 따로 체크한다 (한 분이 체크해도 다른 과목까지 완료로 보이지 않게)
-    const daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
-    (cl.students||[]).forEach(sname=>{
+    // 합반 상대 반은 보통 자기 과목을 따로 등록해두지 않으므로, 없으면 합반 상대(메인) 반의 과목명을 따라간다
+    let daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
+    if(!daySubjNames.length){
+      const mp=mergedCounterpart(cl);
+      if(mp) daySubjNames=[...new Set((mp.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
+    }
+    activeStudents(cl).forEach(sname=>{
       if(attStatusAgg(cl,wd,sname,at)!=='결') return;
       const studentKey=k+'|'+sname;
       if(seenAbsent.has(studentKey)) return;
