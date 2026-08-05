@@ -828,8 +828,18 @@ function bookGiveBadge(c, s){
   return ` <span style="font-size:.66rem;font-weight:800;color:${done===total?'var(--ok)':'var(--warn)'};background:${done===total?'#e6f6ef':'#fdf3e3'};border-radius:6px;padding:1px 5px;margin-left:3px">\uD83D\uDCE6 ${done}/${total}</span>`;
 }
 const TIME_SLOTS=['1:40','2:20','3:00','3:40','4:20','4:25','5:05','5:20','6:00','6:05','6:45','7:25','7:40','8:20','9:00','9:40','10:00'];
+
 function timeSlotOptions(val){
-  return `<option value="">--</option>` + TIME_SLOTS.map(t=>`<option value="${t}" ${val===t?'selected':''}>${t}</option>`).join('');
+  // 혹시 데이터에 공백이 있거나 "03:00" 처럼 0이 붙어있을 경우를 대비한 방어 로직
+  let safeVal = String(val || '').trim();
+  if (safeVal.startsWith('0')) {
+      safeVal = safeVal.substring(1); // "03:00" -> "3:00"
+  }
+
+  return `<option value="">--</option>` + TIME_SLOTS.map(t => {
+    // 텍스트가 정확히 일치할 때만 selected 처리
+    return `<option value="${t}" ${safeVal === t ? 'selected' : ''}>${t}</option>`;
+  }).join('');
 }
 function teacherColorByName(academy, name){
   if(!name) return null;
@@ -1144,7 +1154,7 @@ function renderAI(){
         <label>반</label><select id="aiC"><option value="">반 선택…</option>${cls.map(c=>`<option ${p.cls&&c.name===p.cls.name?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
         <label>학생</label><select id="aiS">${stuOpts}</select>
       </div>
-      <textarea id="aiM">${esc(p.content)}</textarea>
+      <textarea id="aiM">${esc(p.content)}</textarea> 
       <div style="display:flex;gap:8px">
         <button class="btn primary" id="aiSave" style="background:${lt.t.color};border-color:${lt.t.color}">저장</button>
         <button class="btn" id="aiCancel">취소</button>
@@ -1254,6 +1264,19 @@ function mergedPartnerClass(c){
   if(!c.mergedWith) return null;
   const arr=editArr(c.academy, c._src||state.month);
   return arr.find(x=>x._id===c.mergedWith)||null;
+}
+function mergedMainClass(c){
+  // c가 다른 반의 합반 상대(파트너)로 지정되어 있다면, 합반을 설정한 쪽(메인) 반을 반대 방향으로 찾아준다
+  const arr=editArr(c.academy, c._src||state.month);
+  return arr.find(x=>{
+    if(!x.mergedWith || x.name===c.name) return false;
+    const p=arr.find(y=>y._id===x.mergedWith);
+    return p && p.name===c.name;
+  })||null;
+}
+function mergedCounterpart(c){
+  // 방향에 상관없이 c와 합반으로 묶인 상대 반을 찾아준다 (메인이든 파트너든)
+  return mergedPartnerClass(c) || mergedMainClass(c);
 }
 function classCard(c, admin, dayFilter, dupCount){
   const a=AC[c.academy];
@@ -1455,9 +1478,14 @@ function renderTimetableWeek(list){
   list.forEach(c=>{
     const classDays=cdays(c).split(',').map(x=>x.trim()).filter(Boolean);
     const subs=(c.subjects&&c.subjects.length)?c.subjects:[null];
+    const mp=mergedCounterpart(c); // 합반 상대 반 — 시간이 비어있으면 여기서 따라온다
     subs.forEach(s=>{
       const subjDays=(s&&s.day)?s.day.split(',').map(x=>x.trim()).filter(Boolean).filter(d=>!classDays.length||classDays.includes(d)):classDays;
-      const timeStr=(s&&s.time)||c.time||'';
+      let timeStr=(s&&s.time)||c.time||'';
+      if(!timeStr && mp){
+        const matchSub=(s&&s.subject&&mp.subjects)?mp.subjects.find(x=>x.subject===s.subject&&x.time):null;
+        timeStr=(matchSub&&matchSub.time)||timeOf(mp)||'';
+      }
       const r=parseRange(timeStr);
       (subjDays.length?subjDays:['']).forEach(d=>{ if(d) occ.push({c,s,d,r}); });
     });
@@ -1555,7 +1583,8 @@ function bindClassEdit(){
     const tr=sel.closest('tr');
     const sSel=tr.querySelector('.bulk-time[data-part="s"]'), eSel=tr.querySelector('.bulk-time[data-part="e"]');
     const sv=sSel?sSel.value:'', ev=eSel?eSel.value:'';
-    const combined = (sv&&ev) ? `${sv}-${ev}` : '';
+    // 시작·끝을 둘 다 골라야만 저장되던 문제 수정 — 하나만 먼저 골라도 그 값이 유지되고, 재렌더링 후 나머지를 이어서 고를 수 있게 한다
+    const combined = (sv||ev) ? `${sv}-${ev}` : '';
     updateSubjectField(tr.dataset.a, tr.dataset.m, tr.dataset.id, Number(tr.dataset.idx), 'time', combined);
   });
   v.querySelectorAll('[data-ttjump]').forEach(b=>b.onclick=()=>{
@@ -1617,14 +1646,22 @@ function bindClassEdit(){
     const [idx,field]=el.dataset.sfield.split('|');
     updateSubjectField(el.dataset.a,el.dataset.src,el.dataset.id,Number(idx),field,el.value);
   });
-  v.querySelectorAll('[data-stime]').forEach(el=>el.onchange=()=>{
-    const [idx]=el.dataset.stime.split('|');
-    const tr=el.closest('tr');
-    const sSel=tr.querySelector(`[data-stime="${idx}|s"]`), eSel=tr.querySelector(`[data-stime="${idx}|e"]`);
-    const sv=sSel?sSel.value:'', ev=eSel?eSel.value:'';
-    const combined = (sv&&ev) ? `${sv}-${ev}` : '';
-    updateSubjectField(el.dataset.a,el.dataset.src,el.dataset.id,Number(idx),'time',combined);
-  });
+  v.querySelectorAll('[data-stime]').forEach(el => el.onchange = () => {
+    const [idx] = el.dataset.stime.split('|');
+    const tr = el.closest('tr');
+    
+    const sSel = tr.querySelector(`[data-stime="${idx}|s"]`);
+    const eSel = tr.querySelector(`[data-stime="${idx}|e"]`);
+    
+    const sv = sSel ? sSel.value : '';
+    const ev = eSel ? eSel.value : '';
+    
+    // 🚨 수정한 부분: 둘 다 비어있을 때만 빈칸('')으로 날리고, 
+    // 하나라도 값이 있으면 '3:00-' 또는 '-3:40' 형태로라도 살려둠!
+    const combined = (sv || ev) ? `${sv}-${ev}` : '';
+    
+    updateSubjectField(el.dataset.a, el.dataset.src, el.dataset.id, Number(idx), 'time', combined);
+});
 }
 /* ---------- 학생 명단 (관리자·실장 관리, 선생님은 조회+코멘트) ---------- */
 function genStudentId(){ return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
@@ -1634,17 +1671,6 @@ function addStudentRecord(a){
     parentPhone:'', preCheck:'', note:'', status:'재원', statusReason:'', siblings:[], createdAt:todayISO(), updatedAt:Date.now()});
   state.rosterOpen[id]=true;
   save(); render(true);
-}
-function removeStudentFromRosters(academy, nameKo){
-  // 퇴원·휴원 처리된 학생을 반 명단에서 자동으로 제외한다 (최신 달 + 현재 보고 있는 달)
-  targetSyncMonths(academy).forEach(month=>{
-    const arr=editArr(academy, month);
-    arr.forEach(c=>{
-      if(!c.students || !c.students.length) return;
-      const idx=c.students.indexOf(nameKo);
-      if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
-    });
-  });
 }
 function syncStudentClassRoster(student, oldClassName, oldNameKo){
   // 학생 명단(학생 쪽 className 필드)과 반·교재(반 쪽 students 이름 배열)는 서로 다른 곳에 저장되는 별개의 자료라서,
@@ -1681,7 +1707,12 @@ function updateStudentField(id, field, value){
   const s=store.students.find(x=>x.id===id); if(!s) return;
   const oldClassName=s.className, oldNameKo=s.nameKo;
   s[field]=value; s.updatedAt=Date.now();
-  if(field==='status' && (value==='퇴원'||value==='휴원')) removeStudentFromRosters(s.academy, s.nameKo);
+  if(field==='status' && (value==='퇴원'||value==='휴원')){
+    // 반 배정을 취소한다 — 단, 지난 달들의 기록(출결·단어시험 등 히스토리)은 그대로 보이게 최신·현재 보는 달만 정리한다
+    // (휴원·퇴원 학생을 반 명단에서 완전히 지워버리면 지난 학습 기록을 볼 방법이 없어지므로, 삭제가 아니라 '현재 활성 배정만 취소'하는 개념)
+    removeStudentFromActiveRosters(s.academy, s.nameKo);
+    if(value==='퇴원') s.className=''; // 퇴원은 반 배정 자체를 비운다 (휴원은 나중에 같은 반으로 복귀할 수 있어 className은 유지)
+  }
   if(field==='className') syncStudentClassRoster(s, oldClassName, null);
   if(field==='nameKo' && oldNameKo!==value) syncStudentClassRoster(s, s.className, oldNameKo);
   if(field==='alertNote'){
@@ -1691,11 +1722,37 @@ function updateStudentField(id, field, value){
   if(field==='absFrom' && value && !s.absTo) s.absTo=value; // 끝나는 날짜를 안 적으면 하루만 결석으로 처리
   save(); render(true);
 }
+function removeStudentFromActiveRosters(academy, nameKo){
+  // 휴원·퇴원 시 "현재 활성" 배정만 취소한다 (최신 달 + 지금 보고 있는 달) — 지난 달 반 명단·기록은 그대로 남겨 히스토리를 보존한다
+  targetSyncMonths(academy).forEach(month=>{
+    const arr=editArr(academy, month);
+    arr.forEach(c=>{
+      if(!c.students || !c.students.length) return;
+      const idx=c.students.indexOf(nameKo);
+      if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+    });
+  });
+}
+function purgeStudentFromAllRosters(academy, nameKo){
+  // 학생을 완전히 삭제할 때는, 남아있는 반 배정(더미 데이터)이 없도록 그 학원의 모든 달(月) 자료에서 이름을 지운다
+  // (removeStudentFromActiveRosters는 최신 달·현재 보는 달만 정리해서, 완전 삭제 시에는 부족할 수 있음)
+  monthsOf(academy).forEach(month=>{
+    const arr=editArr(academy, month);
+    arr.forEach(c=>{
+      if(!c.students || !c.students.length) return;
+      const idx=c.students.indexOf(nameKo);
+      if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+    });
+  });
+}
 function removeStudentRecord(id){
-  if(!confirm('이 학생 기록을 삭제할까요?')) return;
+  if(!confirm('이 학생 기록을 삭제할까요?\n(모든 반 배정에서도 함께 제거됩니다)')) return;
   store.students.forEach(x=>{ if(x.siblings) x.siblings=x.siblings.filter(sid=>sid!==id); });
   const s=store.students.find(x=>x.id===id);
-  if(s){ s._deleted=true; s.updatedAt=Date.now(); }
+  if(s){
+    purgeStudentFromAllRosters(s.academy, s.nameKo);
+    s._deleted=true; s.updatedAt=Date.now();
+  }
   save(); render(true);
 }
 function resetStudentDB(){
@@ -1942,8 +1999,18 @@ function renderRoster(list){
   const admin=isAdminRole();
   const q=state.q.trim().toLowerCase();
   state.rosterStatus=state.rosterStatus||'재원';
+
+  // ✎ 편집 중인 학생은 상태·검색·반별 필터와 상관없이 항상 상단에 고정 표시한다 —
+  // 상태를 바꾸거나(예: 휴원) 반을 바꾸는 중에 '편집 종료'를 누르기 전까지 화면에서 사라지지 않게 하기 위함
+  const openIds=new Set(Object.keys(state.rosterOpen||{}).filter(id=>state.rosterOpen[id]));
+  const editingNow = admin ? store.students.filter(s=>!s._deleted && openIds.has(s.id) && (state.ac==='all'||s.academy===state.ac)) : [];
+  const editingSection = editingNow.length ? `<div class="ysec" style="margin-bottom:14px;border-top:4px solid #6366f1;background:#f5f6ff">
+    <h3>✎ 편집 중 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">'편집 종료'를 누르기 전까지 여기 계속 표시됩니다</span></h3>
+    <div style="padding:0 16px 14px"><div class="grid">${editingNow.map(s=>studentCard(s,admin)).join('')}</div></div></div>` : '';
+
   let rows=store.students.filter(s=>{
     if(s._deleted) return false;
+    if(openIds.has(s.id)) return false; // 위 '편집 중' 섹션에서 이미 보여주므로 아래 목록에서는 제외 (중복 방지)
     if(state.ac!=='all' && s.academy!==state.ac) return false;
     if(state.rosterStatus!=='전체' && s.status!==state.rosterStatus) return false;
     if(!q) return true;
@@ -1962,7 +2029,7 @@ function renderRoster(list){
       <span style="font-size:.78rem;color:var(--sub);align-self:center">카드의 [✎ 편집]을 눌러 정보·상태·형제자매를 관리할 수 있어요</span>
     </div>`;
   }
-  if(!rows.length) return statusSel+toolbar+`<div class="empty">${state.rosterStatus==='전체'?'등록된':state.rosterStatus} 학생이 없습니다.</div>`;
+  if(!rows.length) return editingSection+statusSel+toolbar+(editingNow.length?'':`<div class="empty">${state.rosterStatus==='전체'?'등록된':state.rosterStatus} 학생이 없습니다.</div>`);
   state.rosterView=state.rosterView||'all';
   const viewChips=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
     <button class="chip ${state.rosterView==='all'?'on':''}" data-rosterview="all">전체</button>
@@ -1970,7 +2037,7 @@ function renderRoster(list){
     <button class="chip ${state.rosterView==='stats'?'on':''}" data-rosterview="stats">📊 학생 통계</button>
   </div>`;
   if(state.rosterView==='stats'){
-    return statusSel+viewChips+toolbar+renderRosterStats();
+    return editingSection+statusSel+viewChips+toolbar+renderRosterStats();
   }
   if(state.rosterView==='class'){
     const groups={};
@@ -1979,7 +2046,7 @@ function renderRoster(list){
       if(a==='미배정') return 1; if(b==='미배정') return -1;
       return a.localeCompare(b,'ko',{numeric:true});
     });
-    if(!keys.length) return statusSel+viewChips+toolbar+'<div class="empty">조건에 맞는 반이 없습니다.</div>';
+    if(!keys.length) return editingSection+statusSel+viewChips+toolbar+(editingNow.length?'':'<div class="empty">조건에 맞는 반이 없습니다.</div>');
     if(!state.rosterClass || !keys.includes(state.rosterClass)) state.rosterClass=keys[0];
     const classSel=`<div style="margin-bottom:12px">
       <select data-rosterclass style="padding:8px 12px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-weight:700">
@@ -1997,10 +2064,10 @@ function renderRoster(list){
     </div>`:'';
     const body=`<div class="ysec"><h3>${esc(state.rosterClass)} <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${students.length}명</span></h3>
       <div style="padding:0 16px 14px"><div class="grid">${students.map(s=>studentCard(s,admin)).join('')}</div></div></div>`;
-    return statusSel+viewChips+toolbar+classSel+bulkBar+body;
+    return editingSection+statusSel+viewChips+toolbar+classSel+bulkBar+body;
   }
   rows.sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
-  return statusSel+viewChips+toolbar+'<div class="grid">'+rows.map(s=>studentCard(s,admin)).join('')+'</div>';
+  return editingSection+statusSel+viewChips+toolbar+'<div class="grid">'+rows.map(s=>studentCard(s,admin)).join('')+'</div>';
 }
 function bindRoster(){
   const v=document.getElementById('view');
@@ -2703,6 +2770,8 @@ function renderMyConsult(list){
     ${body}</div>`;
 }
 function renderConsult(list){
+  // 인원수 0인 반(명단이 비어있는 반)은 상담 대상에서 제외한다
+  list=list.filter(c=>c.students && c.students.length>0);
   const _lt=loginTeacher();
   if(_lt){ state.tf={a:_lt.a,i:_lt.i}; return renderMyConsult(list); }
   if(state.tf) return renderMyConsult(list);
@@ -2797,8 +2866,21 @@ function autoSpanFromSubjects(c, wd){
   const end=Math.max(...ranges.map(r=>r[1]));
   return fmtH24(start)+'-'+fmtH24(end);
 }
-function timeOf(c){ return autoSpanFromSubjects(c) || store.timeedit[ckey(c)] || c.time || ''; }
-function timeOfDay(c, wd){ return autoSpanFromSubjects(c, wd) || timeOf(c); }
+function timeOf(c){
+  const own=autoSpanFromSubjects(c) || store.timeedit[ckey(c)] || c.time || '';
+  if(own) return own;
+  // 합반된 반은 보통 시간을 따로 입력하지 않으므로, 합반 상대 반의 시간을 그대로 따라간다
+  const mp=mergedCounterpart(c);
+  if(mp){ const mOwn=autoSpanFromSubjects(mp) || store.timeedit[ckey(mp)] || mp.time || ''; if(mOwn) return mOwn; }
+  return '';
+}
+function timeOfDay(c, wd){
+  const own=autoSpanFromSubjects(c, wd);
+  if(own) return own;
+  const mp=mergedCounterpart(c);
+  if(mp){ const mOwn=autoSpanFromSubjects(mp, wd); if(mOwn) return mOwn; }
+  return timeOf(c);
+}
 function parseRange(s){
   if(!s) return null;
   s=String(s).replace(/\s/g,'');
@@ -2844,17 +2926,23 @@ function attKeysFor(c, wd){
 // 로그인한 선생님(실장 포함)이 그 반에서 실제로 맡은 과목만 골라준다.
 // 과목마다 담당(teacher)이 명시돼 있으면 그 이름과 일치하는 과목만; 명시된 담당이 하나도 없는 반(예: 전체 담당 배정)이면 제한하지 않고 전부 보여준다.
 function mySubjectKeys(c, wd, lt){
+  // ✨ 추가 1: "내 수업만 보기" 체크가 꺼져있으면 전체 표시!
+  if(!state.myOnly) return null; 
+
   if(!lt) return null; // 순수 관리자(원장) 로그인이면 제한 없이 전체 표시
   const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
   const nm=norm(lt.t.name);
   const hasAnyNamedTeacher=daySubjs.some(s=>s.teacher);
-  if(!hasAnyNamedTeacher) return null; // 이 반에 과목별 담당 표기가 아예 없으면(전체 담당 방식) 제한하지 않음
-  // 내 과목이거나, 담당이 아직 안 정해진 과목만 보여준다. 다른 사람 이름이 명시된 과목은 제외한다
-  // (예: IBT는 Matilda 담당이라 표시되지만, 담당 미지정인 Writing은 대체로 보여줌)
+  if(!hasAnyNamedTeacher) return null; // 이 반에 과목별 담당 표기가 아예 없으면 제한하지 않음
+  
   const mine=daySubjs.filter(s=>!s.teacher || norm(s.teacher)===nm);
+  
+  // ✨ 추가 2: 앨리스 선생님(담당과목 0개) 프리패스 완벽 차단!
+  if(mine.length === 0) return new Set(['__NONE__']);
+
   return new Set(mine.map(s=>s.subject||'-'));
 }
-function cascadeEarlyLeave(k, sname, date){
+  function cascadeEarlyLeave(k, sname, date){
   // 어떤 과목에서 조퇴 처리되면, 그 뒤 시간에 있는 과목들 중 아직 출결 체크가 안 된 것만 자동으로 결석 처리한다
   // (선생님이 이미 다르게 체크해둔 뒤 과목은 그 값을 그대로 두고 건드리지 않음)
   const hashIdx=k.indexOf('#');
@@ -2896,7 +2984,14 @@ function attStatusAgg(c, wd, sname, atForDate){
 }
 function wordDutyForDay(c,wd){
   if(c.wordDutyByDay && c.wordDutyByDay[wd]!=null && c.wordDutyByDay[wd]!=='') return c.wordDutyByDay[wd];
-  return (c.wordDuty!=null && c.wordDuty!=='') ? c.wordDuty : null;
+  if(c.wordDuty!=null && c.wordDuty!=='') return c.wordDuty;
+  // 합반된 반은 보통 단어시험 담당을 따로 지정하지 않으므로, 합반 상대 반의 담당을 그대로 따라간다
+  const mp=mergedCounterpart(c);
+  if(mp){
+    if(mp.wordDutyByDay && mp.wordDutyByDay[wd]!=null && mp.wordDutyByDay[wd]!=='') return mp.wordDutyByDay[wd];
+    if(mp.wordDuty!=null && mp.wordDuty!=='') return mp.wordDuty;
+  }
+  return null;
 }
 // 저장된 담당값(선생님 id, 또는 예전 데이터의 인덱스)으로부터 실제 선생님을 찾는다.
 function teacherByDutyVal(academy, val){
@@ -2930,8 +3025,40 @@ function matchStudentByRosterName(academy, sname){
 function todayClasses(list){
   const wd=wdOf(state.date);
   let cls=list.filter(c=>classMeets(c,wd));
+
+  // 🔗 합반: 합반 상대(파트너) 반은 메인 카드 안에 같이 표시되므로, 별도 카드로 중복 표시되지 않게 걸러낸다
+  const absorbedKeys=new Set();
+  cls.forEach(c=>{
+    if(!c.mergedWith) return;
+    const partner=mergedPartnerClass(c);
+    if(!partner) return;
+    if(absorbedKeys.has(ckey(c))) return; // 양쪽이 서로를 합반 상대로 지정한 경우, 한쪽만 흡수시킨다
+    absorbedKeys.add(ckey(partner));
+  });
+  if(absorbedKeys.size) cls=cls.filter(c=>!absorbedKeys.has(ckey(c)));
+
   const lt=loginTeacher();
-  if(lt && state.myOnly) cls=cls.filter(c=>teacherTeaches(c,lt));
+  if(lt && state.myOnly) {
+    cls = cls.filter(c => {
+      const partner=mergedPartnerClass(c);
+      // 1. 메인 반 또는 합반 상대(파트너) 반 중 하나라도 내 담당이면 카드를 보여준다
+      const teachesMain=teacherTeaches(c, lt);
+      const teachesPartner=partner ? teacherTeaches(partner, lt) : false;
+      if(!teachesMain && !teachesPartner) return false;
+
+      // 2. '오늘' 내 수업이 0개인지 확인 (메인·파트너 둘 다 오늘 내 과목이 없을 때만 카드를 숨긴다)
+      const keys=mySubjectKeys(c, wd, lt);
+      const mainHasNone = !!(keys && keys.has('__NONE__'));
+      let partnerHasNone = true;
+      if(partner && classMeets(partner, wd)){
+        const pKeys=mySubjectKeys(partner, wd, lt);
+        partnerHasNone = !!(pKeys && pKeys.has('__NONE__'));
+      }
+      if(mainHasNone && partnerHasNone) return false;
+
+      return true;
+    });
+  }
   return cls;
 }
 function absentReasonMissingCount(academy, dateISO){
@@ -2949,6 +3076,15 @@ function absentReasonMissingCount(academy, dateISO){
     });
   });
   return n;
+}
+function goToAbsentToday(){
+  // 사유를 바로 입력할 수 있도록 "내 수업만 보기"를 끄고 [오늘 결석생] 영역으로 이동
+  state.date=todayISO(); state.todaySub='day'; state.myOnly=false;
+  render();
+  setTimeout(()=>{
+    const el=document.getElementById('absentTodaySec');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'start'});
+  }, 60);
 }
 function todoCard(list){
   const lt=loginTeacher(); if(!lt) return '';
@@ -2979,13 +3115,13 @@ function todoCard(list){
     <span style="font-size:.86rem;font-weight:700">${mLabel(state.month)} 내 상담: <b style="color:${lt.t.color}">${d}/${tot}명</b> 완료</span>
     <span class="tbar" style="width:110px"><i style="width:${pct}%;background:${lt.t.color}"></i></span>
     ${tot&&d<tot?`<button class="btn small todogo" data-tab="consult" style="margin-left:auto">상담 기록 →</button>`:''}</div>`;
-  if(isMgr()){
+ if(isMgr() || lt){
     const missingN=absentReasonMissingCount(lt.a, today);
     if(missingN>0){
       h2+=`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #f1f3f8;background:#fff5f5;margin:0 -2px">
         <span style="font-size:1rem">🚨</span>
         <span style="font-size:.86rem;font-weight:700;color:#c0392b">오늘 결석 사유 미입력 ${missingN}명</span>
-        <button class="btn small todogo" data-tab="today" style="margin-left:auto">확인하기 →</button></div>`;
+        <button class="btn small" onclick="goToAbsentToday()" style="margin-left:auto">오늘 결석생 확인 →</button></div>`;
     }
   }
   h2+='</div>';
@@ -3053,28 +3189,68 @@ function renderToday(list){
     <div style="padding:0 16px 14px">${renderWordTest()}</div></div>`;
   if(!cls.length) return h+'<div class="empty">이 요일에 수업하는 반이 없습니다.'+(lt&&state.myOnly?' ("내 수업만 보기"를 꺼보세요 — 담당 표기가 없는 반은 걸러집니다)':'')+'</div>'+wtSection;
   const at=atFor(state.date), hw=hwFor(state.date), stay=stayFor(state.date);
-  // 미리 등록해둔 "결석 예정"(여행 등) 기간에 오늘이 포함되면, 아직 출결 체크가 안 된 과목은 자동으로 결석 처리해둔다
+  // 미리 등록해둔 "결석 예정"(여행 등) 기간에 오늘이 포함되면, 아직 출결 체크가 안 된 과목은 자동으로 결석 처리하고 사유도 같이 연동해둔다
   let absAutoChanged=false;
-  cls.forEach(c=>{
-    const allKeys=attKeysFor(c, wd);
-    (c.students||[]).forEach(sname=>{
-      const st=matchStudentByRosterName(c.academy, sname);
+  const applyRosterAbsence=(cl)=>{
+    const allKeys=attKeysFor(cl, wd);
+    const k=ckey(cl);
+    (cl.students||[]).forEach(sname=>{
+      const st=matchStudentByRosterName(cl.academy, sname);
       if(!st || !st.absFrom) return;
       const to=st.absTo||st.absFrom;
       if(!(state.date>=st.absFrom && state.date<=to)) return;
       allKeys.forEach(({key})=>{ at[key]=at[key]||{}; if(!at[key][sname]){ at[key][sname]='결'; absAutoChanged=true; } });
+      // 학생명단에 미리 입력해둔 결석 사유를 오늘 기록에도 자동으로 연동한다 (오늘 기록에 이미 사유가 있으면 덮어쓰지 않음)
+      if(st.absReason){
+        hw[k]=hw[k]||{}; hw[k][sname]=hw[k][sname]||{};
+        if(!hw[k][sname].absReasonToday){ hw[k][sname].absReasonToday=st.absReason; absAutoChanged=true; }
+      }
     });
+  };
+  cls.forEach(c=>{
+    applyRosterAbsence(c);
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) applyRosterAbsence(partner);
   });
+  // 오늘, 모든 과목에서 결석 처리된 학생은 단어시험도 자동으로 "미응시"로 처리해둔다 (단어 범위표에도 같이 반영됨)
+  if(state.date===todayISO()){
+    const markWordTestAbsent=(cl)=>{
+      const allKeys=attKeysFor(cl, wd);
+      if(!allKeys.length) return;
+      (cl.students||[]).forEach(sname=>{
+        const allAbsentToday=allKeys.every(({key})=>((at[key]||{})[sname])==='결');
+        if(!allAbsentToday) return;
+        const st=matchStudentByRosterName(cl.academy, sname);
+        if(!st) return;
+        if(store.wordTests.some(x=>x.studentId===st.id && x.date===state.date)) return; // 이미 기록이 있으면(직접 입력했거나 이전 자동 처리) 건드리지 않음
+        const prev=prevWordTestFor(st.id, state.date);
+        store.wordTests.push({id:genStudentId(), studentId:st.id, academy:cl.academy, date:state.date, wordbook:(prev&&prev.wordbook)||'', range:'', lang:(prev&&prev.lang)||'', retestNeeded:false, retestCompleted:false, retestCompletedDate:'', absent:true, accumulate:false, createdAt:todayISO(), updatedAt:Date.now()});
+        absAutoChanged=true;
+      });
+    };
+    cls.forEach(c=>{
+      markWordTestAbsent(c);
+      const partner=mergedPartnerClass(c);
+      if(partner && classMeets(partner, wd) && partner.students && partner.students.length) markWordTestAbsent(partner);
+    });
+  }
   if(absAutoChanged) save();
   cls.forEach(c=>{
     const k=ckey(c);
     const mine = lt && teacherTeaches(c,lt);
-    const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
-    const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
-    const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
+    let daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
     let attKeys=attKeysFor(c, wd);
     const mySubjSet=mySubjectKeys(c, wd, lt);
-    if(mySubjSet){ const filtered=attKeys.filter(x=>x.subject==null || mySubjSet.has(x.subject)); if(filtered.length) attKeys=filtered; }
+
+    if (state.myOnly) {
+        if (mySubjSet) {
+            const filtered=attKeys.filter(x=>x.subject==null || mySubjSet.has(x.subject)); 
+            if(filtered.length) attKeys=filtered; 
+            daySubjects = daySubjects.filter(s => s.subject == null || mySubjSet.has(s.subject));
+        }
+    }
+    const teas=[...new Set(daySubjects.map(s=>s.teacher).filter(Boolean))];
+    const subjNames=[...new Set(daySubjects.map(s=>s.subject).filter(Boolean))];
     const attMulti=attKeys.length>1;
     const present=(c.students||[]).filter(s=>attStatusAgg(c,wd,s,at)==='출').length;
     const hwdone=(c.students||[]).filter(s=>hw[k]&&hw[k][s]&&hw[k][s].done).length;
@@ -3087,7 +3263,7 @@ function renderToday(list){
       </div>
       ${ref?`<div style="font-size:.72rem;color:#8b93a7;margin-top:4px">과제표 참고 — ${ref}</div>`:''}
     </div>`;
-    const studentAttRow=(s, ownerK, ownerAttKeys)=>{
+   const studentAttRow=(s, ownerK, ownerAttKeys)=>{
       const hrec=(hw[ownerK]||{})[s]||{};
       const srec=(stay[ownerK]||{})[s]||{};
       const rowMulti=ownerAttKeys.length>1;
@@ -3099,14 +3275,21 @@ function renderToday(list){
               ${['출','지','결','조퇴'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('')}
             </span>`;
           }).join('')
-        : (()=>{ const key=ownerAttKeys[0].key; const a=(at[key]||{})[s]||'';
+        : (()=>{ const key=ownerAttKeys[0].key; const a=(at[key]||{})[s]||';';
             return ['출','지','결','조퇴'].map(v=>`<button class="atb ${a===v?'on'+v:''}" data-k="${esc(key)}" data-s="${esc(s)}" data-v="${v}">${v}</button>`).join('');
           })();
-      // 전체결석: 과목이 "여러 개"인 경우에만 보여준다. 과목이 하나뿐이면 결 버튼 자체가 전체결석과 똑같은 뜻이라
-      // 체크박스를 따로 두면 같은 상태를 두 군데서 건드리게 되어, 하나 껐다 켰다 하면서 다른 쪽도 같이 바뀌는 것처럼 혼동을 준다
+      
       const allKeysStr=ownerAttKeys.map(x=>x.key).join(',');
       const allAbsent=ownerAttKeys.length>0 && ownerAttKeys.every(({key})=>((at[key]||{})[s])==='결');
       const allAbsentChk=(ownerAttKeys.length>1 && isAdminRole())?`<label class="hwlab" style="color:${allAbsent?'#c0392b':'var(--sub)'}"><input type="checkbox" class="allabsentchk" data-keys="${esc(allKeysStr)}" data-s="${esc(s)}" ${allAbsent?'checked':''}>전체결석</label>`:'';
+      
+      // ✨ [추가] 이 학생이 하나라도 '결' 상태면 오늘 결석 사유 입력칸을 보여줌!
+      const isAbsentAny = ownerAttKeys.some(({key})=>((at[key]||{})[s])==='결');
+      const absReasonRow = isAbsentAny ? `<div style="display:flex;gap:6px;align-items:center;margin-top:4px;padding-left:2px">
+        <span style="font-size:.74rem;font-weight:800;color:#c0392b">🚨 결석 사유:</span>
+        <input type="text" class="absreasoninput" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(hrec.absReasonToday||'')}" style="flex:1;max-width:320px;border:1px solid #f5c6cb;border-radius:7px;padding:4px 9px;font-family:inherit;font-size:.76rem;background:#fff8f8">
+      </div>` : '';
+
       const stayRow = rowMulti
         ? `<div style="padding:1px 0 7px 2px">
             <label class="hwlab" style="color:${srec.stay?'#b45309':'var(--sub)'}"><input type="checkbox" class="staychk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${srec.stay?'checked':''}>🙋 오늘 남기</label>
@@ -3124,9 +3307,8 @@ function renderToday(list){
         <label class="hwlab" style="color:${srec.stay?'#b45309':'var(--sub)'}"><input type="checkbox" class="staychk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${srec.stay?'checked':''}>🙋 오늘 남기</label>
         <input type="text" class="staynote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="남는 이유 메모" value="${esc(srec.memo||'')}" style="flex:1;max-width:280px;border:1px solid var(--line);border-radius:7px;padding:4px 9px;font-family:inherit;font-size:.78rem;background:#fbfcfe">
       </div>`;
+
       if(rowMulti){
-        // 과목이 여러 개면 고정폭 격자(.trow2)에 억지로 욱여넣으면 줄바꿈되며 다른 요소와 겹치므로,
-        // 이름·숙제·메모 한 줄 + 그 아래 과목별 출결 버튼들을 별도의 자유 줄로 분리해서 겹치지 않게 한다
         return `<div style="padding:7px 0;border-bottom:1px solid #f1f3f8">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span class="sn" style="min-width:96px;font-weight:800">${hl(s)}</span>
@@ -3134,6 +3316,7 @@ function renderToday(list){
             <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}" style="flex:1;min-width:160px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;font-family:inherit;font-size:.83rem">
           </div>
           <div class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px">${atGroups}${allAbsentChk}</div>
+          ${absReasonRow}
         </div>${stayRow}`;
       }
       return `<div class="trow2">
@@ -3141,6 +3324,7 @@ function renderToday(list){
         <span class="atg" style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">${atGroups}${allAbsentChk}</span>
         <label class="hwlab"><input type="checkbox" class="hwchk" data-k="${esc(ownerK)}" data-s="${esc(s)}" ${hrec.done?'checked':''}>숙제</label>
         <input type="text" class="hwnote" data-k="${esc(ownerK)}" data-s="${esc(s)}" placeholder="숙제 확인 · 수정 지시 · 수업 메모…" value="${esc(hrec.note||'')}"></div>
+        ${absReasonRow}
       ${stayRow}`;
     };
     let body='';
@@ -3210,50 +3394,63 @@ function renderToday(list){
     <div style="padding:0 16px 14px">
       ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
-  // 결석생 숙제 확인 — 실장·관리자 전용 요약 (담당 선생님이 입력한 숙제/메모를 한 곳에서 확인)
-  const absentHwList=[]; const seenAbsent=new Set(); const seenAbsentStudent=new Set();
-  cls.forEach(c=>{
-    const k=ckey(c);
-    const recs=at[k]||{};
-    const daySubjects=(c.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s));
-    const subjNames=daySubjects.length?[...new Set(daySubjects.map(s=>s.subject||'-'))]:['-'];
-    (c.students||[]).forEach(sname=>{
-      if(recs[sname]!=='결') return;
+// 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
+  const absentHwList=[]; const seenAbsent=new Set();
+  const collectAbsent=(cl)=>{
+    const k=ckey(cl);
+    // 과목마다 담당 선생님이 다를 수 있어, 카톡 전송 여부는 과목별로 따로 체크한다 (한 분이 체크해도 다른 과목까지 완료로 보이지 않게)
+    const daySubjNames=[...new Set((cl.subjects||[]).filter(s=>subjOnDay(s,wd)&&!isWordTestSubject(s)).map(s=>s.subject).filter(Boolean))];
+    (cl.students||[]).forEach(sname=>{
+      if(attStatusAgg(cl,wd,sname,at)!=='결') return;
       const studentKey=k+'|'+sname;
-      const first=!seenAbsentStudent.has(studentKey);
-      seenAbsentStudent.add(studentKey);
+      if(seenAbsent.has(studentKey)) return;
+      seenAbsent.add(studentKey);
       const hrecTop=(hw[k]||{})[sname]||{};
-      subjNames.forEach((subjName,si)=>{
-        const dedupKey=k+'|'+sname+'|'+subjName;
-        if(seenAbsent.has(dedupKey)) return;
-        seenAbsent.add(dedupKey);
-        const hrec=(hw[k]||{})[sname]||{};
-        const bs=(hrec.bySubject||{})[subjName]||{};
-        absentHwList.push({className:c.name, academy:c.academy, student:sname, subject:subjName, note:bs.note||'', done:!!bs.done, kakaoSent:!!bs.kakaoSent, k, s:sname, first:first&&si===0, absReasonToday:hrecTop.absReasonToday||''});
+      const bySubj=hrecTop.bySubject||{};
+      const subjects=daySubjNames.length
+        ? daySubjNames.map(subj=>({subj, kakaoSent:!!(bySubj[subj]&&bySubj[subj].kakaoSent)}))
+        : [{subj:null, kakaoSent:!!hrecTop.hwKakaoSent}]; // 과목 정보가 없는 반은 예전처럼 학생당 하나로 처리
+      absentHwList.push({
+        className: cl.name,
+        academy: cl.academy,
+        student: sname,
+        k: k,
+        s: sname,
+        absReasonToday: hrecTop.absReasonToday || '',
+        subjects
       });
     });
+  };
+  cls.forEach(c=>{
+    collectAbsent(c);
+    // 🔗 합반 상대(파트너) 반 학생도 메인 카드에 같이 표시되므로, 결석생 목록에도 같이 모은다
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectAbsent(partner);
   });
-  const absentHwSection=`<div class="ysec" style="margin-top:16px;border-top:4px solid #c0392b"><h3>📕 오늘 결석생 숙제 확인 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}건 · 과목별로 표시됩니다)</span></h3>
+
+  const absentTodaySection=`<div class="ysec" id="absentTodaySec" style="margin-top:16px;border-top:4px solid #c0392b;background:#fff8f8">
+    <h3>🚨 오늘 결석생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${absentHwList.length}명)</span></h3>
     <div style="padding:0 16px 14px">
       ${absentHwList.length?absentHwList.map(x=>{
-        const rk=esc(x.k)+'|'+esc(x.s)+'|'+esc(x.subject);
         const reasonMissing=!x.absReasonToday;
-        const reasonRow=x.first?`<div class="rowitem" style="align-items:center;background:${reasonMissing?'#fff5f5':'transparent'};border-radius:8px">
-          <span class="key" style="min-width:140px">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
-          <span class="val" style="display:flex;gap:6px;align-items:center;flex:1">
-            <input type="text" class="absreasoninput" data-absreason="${esc(x.k)}|${esc(x.s)}" value="${esc(x.absReasonToday)}" placeholder="결석 사유 (예: 감기, 가족여행)" style="flex:1;min-width:160px;border:1.5px solid ${reasonMissing?'#e7b3ab':'var(--line)'};border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem;background:${reasonMissing?'#fff8f8':'#fff'}">
-            ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700;white-space:nowrap">⚠ 사유 미입력</span>':''}
-          </span></div>`:'';
-        return reasonRow+`<div class="rowitem" style="align-items:flex-start;flex-wrap:wrap;gap:6px">
-          <span class="key" style="min-width:140px">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)} · ${esc(x.subject)}</span></span>
-          <span class="val" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;flex:1">
-            <input type="text" class="absenthwnote" data-absenthw="${rk}" value="${esc(x.note)}" placeholder="이 과목 결석 숙제 메모" style="flex:1;min-width:160px;border:1.5px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">
-            <label class="hwlab"><input type="checkbox" data-absentdone="${rk}" ${x.done?'checked':''}>완료</label>
-            <label class="hwlab" style="color:${x.kakaoSent?'#3a9a3a':'var(--sub)'}"><input type="checkbox" data-kakaosent="${rk}" ${x.kakaoSent?'checked':''}>💬 카톡 전송</label>
-          </span></div>`;
+        return `<div style="padding:10px 0;border-bottom:1px solid #f5c6cb;display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <b style="font-size:.92rem;color:#c0392b">${esc(x.student)}</b>
+            <span style="font-size:.78rem;font-weight:600;color:var(--sub)">[${esc(x.className)}] ${MODE==='all'?bdg(x.academy):''}</span>
+            ${reasonMissing?'<span style="font-size:.72rem;color:#c0392b;font-weight:700">⚠ 사유 미입력</span>':''}
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" class="absreasoninput" data-k="${esc(x.k)}" data-s="${esc(x.s)}" placeholder="결석 사유를 입력하세요 (예: 병원, 여행 등)" value="${esc(x.absReasonToday)}" style="flex:1;border:1.5px solid ${reasonMissing?'#e7b3ab':'#f5c6cb'};border-radius:8px;padding:6px 10px;font-family:inherit;font-size:.82rem;background:${reasonMissing?'#fff8f8':'#fff'}">
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${x.subjects.map(sj=>`<label class="hwlab" style="color:${sj.kakaoSent?'#27ae60':'#b45309'};font-weight:800;background:#fff;padding:3px 8px;border:1px solid ${sj.kakaoSent?'#27ae60':'#f5c6cb'};border-radius:6px">
+              <input type="checkbox" class="hwkakaochk" data-k="${esc(x.k)}" data-s="${esc(x.s)}" data-subj="${esc(sj.subj||'')}" ${sj.kakaoSent?'checked':''}> 💬 ${sj.subj?esc(sj.subj)+' - ':''}카톡 숙제 전송
+            </label>`).join('')}
+          </div>
+        </div>`;
       }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 결석 처리된 학생이 없습니다.</div>'}
     </div></div>`;
-  return alertSection+h+staySection+absentHwSection+wtSection;
+  return alertSection+h+staySection+absentTodaySection+wtSection;
 }
 function bindToday(){
   const v=document.getElementById('view');
@@ -3338,42 +3535,28 @@ function bindToday(){
     const st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].doneDate=todayISO(); save(); render(true);
   });
-  function parseAbsentKey(raw){
-    // 형식: 학원|반명|학생명|과목명 (반명 안에 '|'가 없다는 전제하에 뒤에서부터 과목·학생을 떼어내고 나머지를 반 key로 합친다)
-    const parts=raw.split('|'); const subj=parts.pop(); const stu=parts.pop(); const k=parts.join('|');
-    return {k, stu, subj};
-  }
-  v.querySelectorAll('[data-absenthw]').forEach(inp=>inp.onchange=()=>{
-    const {k,stu,subj}=parseAbsentKey(inp.dataset.absenthw);
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
-    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].note=inp.value;
-    save();
-  });
-  v.querySelectorAll('[data-absentdone]').forEach(cb=>cb.onchange=()=>{
-    const {k,stu,subj}=parseAbsentKey(cb.dataset.absentdone);
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
-    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].done=cb.checked;
+  v.querySelectorAll('.absreasoninput').forEach(inp=>inp.onchange=()=>{
+    const k=inp.dataset.k, s=inp.dataset.s, hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
+    hw2[k][s].absReasonToday=inp.value;
     save(); render(true);
   });
-  v.querySelectorAll('[data-absreason]').forEach(inp=>inp.onchange=()=>{
-    const [k,stu]=inp.dataset.absreason.split('|');
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{};
-    hw2[k][stu].absReasonToday=inp.value;
-    save(); render(true);
-  });
-  v.querySelectorAll('[data-kakaosent]').forEach(cb=>cb.onchange=()=>{
-    const {k,stu,subj}=parseAbsentKey(cb.dataset.kakaosent);
-    const hw2=hwFor(state.date);
-    hw2[k]=hw2[k]||{}; hw2[k][stu]=hw2[k][stu]||{}; hw2[k][stu].bySubject=hw2[k][stu].bySubject||{};
-    hw2[k][stu].bySubject[subj]=hw2[k][stu].bySubject[subj]||{}; hw2[k][stu].bySubject[subj].kakaoSent=cb.checked;
+  v.querySelectorAll('.hwkakaochk').forEach(cb=>cb.onchange=()=>{
+    const k=cb.dataset.k, s=cb.dataset.s, subj=cb.dataset.subj, hw2=hwFor(state.date);
+    hw2[k]=hw2[k]||{}; hw2[k][s]=hw2[k][s]||{};
+    if(subj){
+      // 과목별로 따로 저장 — 다른 과목 담당 선생님 체크에 영향받지 않는다
+      hw2[k][s].bySubject=hw2[k][s].bySubject||{};
+      hw2[k][s].bySubject[subj]=hw2[k][s].bySubject[subj]||{};
+      hw2[k][s].bySubject[subj].kakaoSent=cb.checked;
+    } else {
+      hw2[k][s].hwKakaoSent=cb.checked; // 과목 정보가 없는 반(예전 방식)
+    }
     const lt=loginTeacher();
     if(cb.checked && lt){
       const who=whoKey(lt);
       const e=wlGet(who, state.date);
-      const label=`${stu}(${subj}) 결석 숙제 카톡 전송 완료`;
+      const label=`${s}${subj?'('+subj+')':''} 결석 숙제 카톡 전송 완료`;
       if(!e.today.some(x=>x.t===label)){
         const emptyIdx=e.today.findIndex(x=>!x.t);
         if(emptyIdx>=0) e.today[emptyIdx]={t:label,d:'',r:'완료'}; else e.today.push({t:label,d:'',r:'완료'});
@@ -4719,6 +4902,31 @@ function findDuplicateClasses(){
   }
   return groups;
 }
+function findGhostRosterEntries(){
+  // 반 명단(students 이름 배열)에는 있지만, 학생명단(store.students)에 실제로 존재하지 않는(완전히 삭제됐거나 오타인)
+  // "더미" 이름을 모든 학원·모든 달에서 찾아준다. 휴원·퇴원 학생은 일정 기간 반 명단에 남아있는 게 정상이므로 여기서 제외한다.
+  const out=[];
+  academies().forEach(a=>{
+    monthsOf(a).forEach(month=>{
+      const arr=editArr(a, month);
+      arr.forEach(c=>{
+        if(c._deleted) return;
+        (c.students||[]).forEach(sname=>{
+          const st=matchStudentByRosterName(a, sname);
+          if(!st){ out.push({academy:a, month, classId:c._id, className:c.name, sname, reason:'학생명단에 없는 이름(완전 삭제됐거나 오타)'}); }
+        });
+      });
+    });
+  });
+  return out;
+}
+function removeGhostRosterEntry(academy, month, classId, sname){
+  const arr=editArr(academy, month);
+  const c=arr.find(x=>x._id===classId); if(!c || !c.students) return;
+  const idx=c.students.indexOf(sname);
+  if(idx>=0){ c.students.splice(idx,1); c.count=c.students.length; c.updatedAt=Date.now(); }
+  save(); render(true);
+}
 function renderSet(){
   let h='';
   const isTeacher=!!loginTeacher() && !isMgr();
@@ -4733,6 +4941,16 @@ function renderSet(){
           <span class="key" style="font-weight:400;font-size:.8rem">학생 ${c.count!=null?c.count:(c.students||[]).length}명 · 과목 ${(c.subjects||[]).length}개${c.updatedAt?' · 수정 '+new Date(c.updatedAt).toLocaleString('ko'):''}</span>
           <span class="val"><button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-dupdel="${g.academy}|${g.month}|${esc(c._id||'')}">🗑 이 반 삭제</button></span></div>`).join('')}
       </div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">중복된 반이 없습니다.</div>'}
+    </div>`;
+  }
+  // 👻 유령(더미) 학생 정리 — 학생명단에서 완전히 삭제됐는데 반 카드에 이름만 남아있는 경우 (관리자·실장만) — 휴원·퇴원은 대상에서 제외
+  if(!isTeacher){
+    const ghosts=findGhostRosterEntries();
+    h+=`<div class="setsec" style="border:2px solid #c0392b"><h3>👻 유령(더미) 학생 정리 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(${ghosts.length}건)</span></h3>
+      <div class="desc">학생명단에서 완전히 삭제됐는데 반 카드에는 이름이 그대로 남아 오늘 기록·단어시험 등에 더미로 뜨는 경우를 찾아줍니다. (휴원·퇴원 학생은 일정 기간 반 명단에 남아있는 게 정상이라 여기 표시되지 않습니다) 확인 후 지워주세요.</div>
+      ${ghosts.length?ghosts.map(g=>`<div class="rowitem" style="align-items:center">
+        <span class="key">${esc(g.sname)} <span style="font-weight:400;color:var(--sub);font-size:.78rem">[${AC[g.academy].label} · ${mLabel(g.month)} · ${esc(g.className)}] · ${esc(g.reason)}</span></span>
+        <span class="val"><button class="btn small" style="color:#c0392b;border-color:#e7b3ab" data-ghostdel="${g.academy}|${g.month}|${esc(g.classId||'')}|${esc(g.sname)}">🗑 이 반에서 제거</button></span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">더미로 남은 학생이 없습니다.</div>'}
     </div>`;
   }
   // 데이터 마스터 (관리자만)
@@ -4957,6 +5175,11 @@ function bindSet(){
     if(!isAdminRole())return;
     const [a,m,id]=b.dataset.dupdel.split('|');
     deleteClassAction(a,m,id);
+  });
+  v.querySelectorAll('[data-ghostdel]').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole())return;
+    const [a,m,id,sname]=b.dataset.ghostdel.split('|');
+    removeGhostRosterEntry(a,m,id,sname);
   });
   const ae=v.querySelector('#adminEmail'); if(ae) ae.onchange=()=>{ store.adminEmail=ae.value.trim(); save(); };
   const ap=v.querySelector('#adminPw'); if(ap) ap.onchange=()=>{ store.adminPw=ap.value; save(); };
