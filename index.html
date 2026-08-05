@@ -2836,7 +2836,7 @@ function attKeysFor(c, wd){
   daySubjects.forEach(s=>{ const nm=s.subject||'-'; if(repTime[nm]==null && s.time) repTime[nm]=s.time; });
   const withOrder=names.map((nm,idx)=>{
     const r=repTime[nm]?parseRange(repTime[nm]):null;
-    return {subject:nm, key:k+'#'+nm, t:r?r[0]:(1000+idx)}; // 시간 정보 없으면 원래 순서를 유지하도록 뒤로 밀어둠
+    return {subject:nm, key:k+'_'+nm, t:r?r[0]:(1000+idx)}; // 시간 정보 없으면 원래 순서를 유지하도록 뒤로 밀어둠
   });
   withOrder.sort((a,b)=>a.t-b.t);
   return withOrder.map(({subject,key})=>({subject,key}));
