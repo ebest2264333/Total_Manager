@@ -931,7 +931,7 @@ function tabDefs(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['yearly','연간 교재'],['cal','일정 · 회의'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
@@ -1866,12 +1866,27 @@ function linkSibling(id, siblingName){
   const groupIds=new Set([id, sib.id]);
   (s.siblings||[]).forEach(x=>groupIds.add(x));
   (sib.siblings||[]).forEach(x=>groupIds.add(x));
+  // 그룹 안에 등록된 부모님 번호가 있으면, 번호가 비어있는 형제자매에게 같이 채워준다 (이미 다른 번호가 있으면 덮어쓰지 않음)
+  let groupPhone='';
+  groupIds.forEach(memberId=>{ const m=store.students.find(x=>x.id===memberId); if(m && m.parentPhone && !groupPhone) groupPhone=m.parentPhone; });
   groupIds.forEach(memberId=>{
     const member=store.students.find(x=>x.id===memberId); if(!member) return;
     member.siblings=[...groupIds].filter(x=>x!==memberId);
+    if(!member.parentPhone && groupPhone) member.parentPhone=groupPhone;
     member.updatedAt=Date.now();
   });
   save(); render(true);
+}
+function gotoStudent(id){
+  const s=store.students.find(x=>x.id===id); if(!s) return;
+  state.tab='roster'; state.q=''; state.rosterStatus='전체'; state.rosterView='all';
+  if(MODE==='all') state.ac=s.academy;
+  if(isAdminRole()) state.rosterOpen[id]=true;
+  render();
+  setTimeout(()=>{
+    const el=document.getElementById('stu_'+id);
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  }, 60);
 }
 function unlinkSibling(id, siblingId){
   const s=store.students.find(x=>x.id===id); const sib=store.students.find(x=>x.id===siblingId);
@@ -1887,24 +1902,26 @@ function classNameOptions(a){
 function studentCard(s, admin){
   const canNote = admin || !!loginTeacher();
   const statusColor = s.status==='퇴원' ? '#c0392b' : s.status==='휴원' ? '#b45309' : '#0e9f6e';
-  const sibNames=(s.siblings||[]).map(id=>{ const sib=store.students.find(x=>x.id===id); return sib?sib.nameKo:null; }).filter(Boolean);
+  const sibs=(s.siblings||[]).map(id=>{ const sib=store.students.find(x=>x.id===id); return sib?{id,name:sib.nameKo}:null; }).filter(Boolean);
+  const sibNames=sibs.map(x=>x.name);
+  const sibLinks=sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(x.name)}</span>`).join(', ');
   const open = admin && state.rosterOpen[s.id];
   if(!open){
-    return `<article class="card ${AC[s.academy].cls}">
+    return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}">
       <h2>${esc(s.nameKo)}${s.nameEn?' <span style="font-weight:400;color:var(--sub)">('+esc(s.nameEn)+')</span>':''}
         <span class="badge" style="background:${statusColor};color:#fff">${esc(s.status)}</span>
         ${admin?`<button class="btn small" style="float:right;font-size:.72rem;padding:4px 9px" data-rstoggle="${s.id}">✎ 편집</button>`:''}</h2>
       <div class="meta">${esc(s.className||'미배정')}${s.grade?' · '+esc(s.grade):''}${s.school?' · '+esc(s.school):''}${s.parentPhone?' · 📞 '+esc(s.parentPhone):''}</div>
       ${s.preCheck?`<div class="rnote">🔎 상담 전 확인: ${esc(s.preCheck)}</div>`:''}
       ${s.status!=='재원'&&s.statusReason?`<div class="rnote">${esc(s.status)} 사유: ${esc(s.statusReason)}</div>`:''}
-      ${sibNames.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibNames.map(esc).join(', ')}</div>`:''}
+      ${sibs.length?`<div style="font-size:.78rem;color:var(--sub);margin-top:4px">👨‍👩‍👧‍👦 형제자매: ${sibLinks}</div>`:''}
       ${canNote?`<textarea data-rsnote="${s.id}" placeholder="특이사항 코멘트…" style="width:100%;min-height:44px;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-family:inherit;font-size:.83rem">${esc(s.note||'')}</textarea>`
         :(s.note?`<div class="note">${esc(s.note)}</div>`:'')}
     </article>`;
   }
   const statusOpts=['재원','휴원','퇴원'];
   const clsOpts=classNameOptions(s.academy);
-  return `<article class="card ${AC[s.academy].cls}" style="border:2px solid ${AC[s.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
+  return `<article class="card ${AC[s.academy].cls}" id="stu_${s.id}" style="border:2px solid ${AC[s.academy].cls==='eb'?'var(--ebest)':'var(--icon)'}">
     <datalist id="dl_cls_${s.academy}">${clsOpts.map(n=>`<option value="${esc(n)}">`).join('')}</datalist>
     <datalist id="dl_allstudents">${store.students.filter(x=>x.id!==s.id && !x._deleted).map(x=>`<option value="${esc(x.nameKo)}">`).join('')}</datalist>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
@@ -1925,7 +1942,7 @@ function studentCard(s, admin){
     </div>
     <input type="text" value="${esc(s.preCheck||'')}" placeholder="상담 전 확인해야 할 내용" data-rsfield="${s.id}|preCheck" style="width:100%;margin-bottom:8px;padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
     <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">형제자매</div>
-    <div style="margin-bottom:6px">${sibNames.length?sibNames.map((n,idx)=>`<span class="stu">${esc(n)} <b data-rsunlink="${s.id}|${s.siblings[idx]}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join(''):'<span style="font-size:.8rem;color:#8b93a7">없음</span>'}</div>
+    <div style="margin-bottom:6px">${sibs.length?sibs.map(x=>`<span class="stu"><span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px">${esc(x.name)}</span> <b data-rsunlink="${s.id}|${x.id}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join(''):'<span style="font-size:.8rem;color:#8b93a7">없음</span>'}</div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
       <input type="text" placeholder="형제자매 이름 검색" list="dl_allstudents" data-rssib-in="${s.id}" style="flex:1;min-width:100px;padding:6px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.86rem">
       <button class="btn small" data-rssiblink="${s.id}">연결</button>
@@ -2125,6 +2142,7 @@ function bindRoster(){
     const id=b.dataset.rstoggle; state.rosterOpen[id]=!state.rosterOpen[id]; render(true);
   });
   v.querySelectorAll('[data-rsdel]').forEach(b=>b.onclick=()=>removeStudentRecord(b.dataset.rsdel));
+  v.querySelectorAll('[data-rsgoto]').forEach(el=>el.onclick=(e)=>{ e.stopPropagation(); gotoStudent(el.dataset.rsgoto); });
   v.querySelectorAll('[data-rsfield]').forEach(el=>el.onchange=()=>{
     const [id,field]=el.dataset.rsfield.split('|');
     updateStudentField(id,field,el.value);
@@ -2620,18 +2638,19 @@ function classProgress(c){
   const done=(c.students||[]).filter(s=>rec[s]&&rec[s].done).length;
   return {done,total};
 }
-function studentRow(k, s, showClass, c){
+function studentRow(k, s, showClass, c, readOnly){
   const rec=mRecords()[k]||{}; const r=rec[s]||{};
   const stRec=matchStudentByRosterName(c.academy, s);
   const preCheck=stRec?(stRec.preCheck||''):'';
+  const dis = readOnly?'disabled':'';
   return `<div class="srow">
-    <input type="checkbox" data-k="${esc(k)}" data-s="${esc(s)}" ${r.done?'checked':''}>
+    <input type="checkbox" data-k="${esc(k)}" data-s="${esc(s)}" ${r.done?'checked':''} ${dis}>
     <span class="sn ${r.done?'done':''}">${hl(s)}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}</span>
     <div style="display:flex;flex-direction:column;gap:5px">
       ${preCheck?`<div style="font-size:.76rem;color:#b45309;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;padding:5px 8px">🔎 상담 전 확인: ${esc(preCheck)}</div>`:''}
-      <textarea placeholder="상담 내역…" data-k="${esc(k)}" data-s="${esc(s)}">${esc(r.memo||'')}</textarea>
+      <textarea placeholder="상담 내역…" data-k="${esc(k)}" data-s="${esc(s)}" ${dis}>${esc(r.memo||'')}</textarea>
     </div>
-    <input type="date" class="dtin" title="상담일자" data-k="${esc(k)}" data-s="${esc(s)}" value="${esc(r.date||'')}" style="border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-family:inherit;font-size:.78rem;color:var(--sub)"></div>`;
+    <input type="date" class="dtin" title="상담일자" data-k="${esc(k)}" data-s="${esc(s)}" value="${esc(r.date||'')}" ${dis} style="border:1px solid var(--line);border-radius:8px;padding:5px 7px;font-family:inherit;font-size:.78rem;color:var(--sub)"></div>`;
 }
 function ensureAssign(){
   const mo=state.month; let changed=false;
@@ -2833,6 +2852,9 @@ function renderNewStudentMine(a,i){
 function renderMyConsult(list){
   const {a,i}=state.tf; const t=store.teachers[a][i];
   if(!t){ state.tf=null; return renderConsult(list); }
+  const _lt2=loginTeacher();
+  const isMe=_lt2&&_lt2.a===a&&_lt2.i===i;
+  const viewingOthers = _lt2 && !isMgr() && !isMe; // 실장 미만이 남의 상담 기록을 보는 중 → 읽기 전용
   const cls=list.filter(c=>c.academy===a && mAssign()[ckey(c)]===i);
   let d=0,tot=0; cls.forEach(c=>{const p=classProgress(c);d+=p.done;tot+=p.total;});
   let body='';
@@ -2840,15 +2862,15 @@ function renderMyConsult(list){
   cls.forEach(c=>{
     const k=ckey(c); const p=classProgress(c);
     body+=`<div class="myclass">${esc(c.name)} <span style="font-weight:400">· ${AC[c.academy].label} · ${c.dept}${c.count?' · '+c.count+'명':''}${p.total?` · ${p.done}/${p.total} 완료`:''}</span></div>`;
-    if(c.students&&c.students.length) body+=c.students.map(s=>studentRow(k,s,false,c)).join('');
-    else body+=`<div style="padding:6px 0"><textarea class="cmemo" data-k="${esc(k)}" style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="상담 내용 메모… (명단 자료가 없는 반)">${esc(mCmemo()[k]||'')}</textarea></div>`;
+    if(c.students&&c.students.length) body+=c.students.map(s=>studentRow(k,s,false,c,viewingOthers)).join('');
+    else body+=`<div style="padding:6px 0"><textarea class="cmemo" data-k="${esc(k)}" ${viewingOthers?'disabled':''} style="width:100%;min-height:50px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-family:inherit;font-size:.83rem" placeholder="상담 내용 메모… (명단 자료가 없는 반)">${esc(mCmemo()[k]||'')}</textarea></div>`;
   });
-  const isMe=loginTeacher()&&loginTeacher().a===a&&loginTeacher().i===i;
   const myReqsHtml=renderConsultRequestsMine(a,i,true);
-  const myReqsPanel=myReqsHtml?`<div class="mypanel" style="border-top-color:#7c3aed"><h2>💬 개별 상담 요청</h2>${myReqsHtml}</div>`:'';
-  return (isMe?'':teacherCards(list))+(isMe&&isAdminRole()?renderConsultRequestAdmin()+renderNewStudentAdmin():'')+myReqsPanel+renderNewStudentMine(a,i)+`<div class="mypanel" style="border-top-color:${t.color}">
+  const myReqsPanel=(myReqsHtml&&!viewingOthers)?`<div class="mypanel" style="border-top-color:#7c3aed"><h2>💬 개별 상담 요청</h2>${myReqsHtml}</div>`:'';
+  return teacherCards(list)+(isMe&&isAdminRole()?renderConsultRequestAdmin()+renderNewStudentAdmin():'')+myReqsPanel+(viewingOthers?'':renderNewStudentMine(a,i))+`<div class="mypanel" style="border-top-color:${t.color}">
     <h2><span class="tdot" style="background:${t.color}"></span>${esc(t.name)} 선생님 — ${mLabel(state.month)} 상담
-      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${submitBtn('consult', a+'|'+i, state.month, t.color)}${isMe?'':'<button class="btn small" id="backAll">← 전체 보기</button>'}</span></h2>
+      ${viewingOthers?'<span style="font-size:.76rem;color:var(--sub);font-weight:700">(다른 선생님 상담 기록 · 조회 전용)</span>':''}
+      <span style="margin-left:auto;display:flex;gap:8px;align-items:center">${viewingOthers?'':submitBtn('consult', a+'|'+i, state.month, t.color)}${isMe?'':'<button class="btn small" id="backAll">← 뒤로</button>'}</span></h2>
     <div class="sub">배정 ${cls.length}개 반 · ${d}/${tot}명 완료</div>
     ${body}</div>`;
 }
@@ -2856,7 +2878,7 @@ function renderMyConsult(list){
 function renderConsult(list){
   list=list.filter(c=>c.students && c.students.length>0);
   const _lt=loginTeacher();
-  if(_lt){ state.tf={a:_lt.a,i:_lt.i}; return renderMyConsult(list); }
+  if(_lt && !state.tf) state.tf={a:_lt.a,i:_lt.i}; // 로그인 시 기본은 본인 — 이미 다른 선생님을 선택해뒀다면 유지
   if(state.tf) return renderMyConsult(list);
   const un=list.filter(c=>mAssign()[ckey(c)]==null).length;
   let bar=`<div class="cbtns">
@@ -4018,19 +4040,19 @@ function wlGet(who, date){
   e.lessons=e.lessons||[];
   return e;
 }
-function journalForm(who, date){
+function journalForm(who, date, readOnly){
   const w=whoTeacher(who); const e=wlGet(who,date);
   const mo=Number(date.slice(5,7)), wk=Math.floor((Number(date.slice(8))-1)/7)+1;
-  const resSel=(sec,i,val)=>`<select class="wl-r" data-sec="${sec}" data-i="${i}" style="padding:5px 7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.8rem;font-weight:700;${val==='완료'||val==='O'?'color:var(--ok);border-color:var(--ok)':val==='△'?'color:var(--warn);border-color:var(--warn)':val==='X'?'color:#c02b2b':''}">${RESULTS.map(r=>`<option ${r===val?'selected':''}>${r}</option>`).join('')}</select>`;
-  const starBtn=(i,val)=>`<button class="wl-star" data-i="${i}" style="border:none;background:none;font-size:1.05rem;cursor:pointer;color:${val?'#e2a400':'#d3d8e3'}" title="필수항목">★</button>`;
-  const ti=(sec,i,f,val,ph,wd)=>`<input type="text" class="wl-t" data-sec="${sec}" data-i="${i}" data-f="${f}" value="${esc(val)}" placeholder="${ph||''}" style="width:${wd||'100%'};border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-family:inherit;font-size:.83rem;background:#fbfcfe">`;
+  const dis = readOnly?'disabled':'';
+  const resSel=(sec,i,val)=>`<select class="wl-r" data-sec="${sec}" data-i="${i}" ${dis} style="padding:5px 7px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.8rem;font-weight:700;${val==='완료'||val==='O'?'color:var(--ok);border-color:var(--ok)':val==='△'?'color:var(--warn);border-color:var(--warn)':val==='X'?'color:#c02b2b':''}">${RESULTS.map(r=>`<option ${r===val?'selected':''}>${r}</option>`).join('')}</select>`;
+  const starBtn=(i,val)=>`<button class="wl-star" data-i="${i}" ${dis} style="border:none;background:none;font-size:1.05rem;cursor:pointer;color:${val?'#e2a400':'#d3d8e3'}" title="필수항목">★</button>`;
+  const ti=(sec,i,f,val,ph,wd)=>`<input type="text" class="wl-t" data-sec="${sec}" data-i="${i}" data-f="${f}" value="${esc(val)}" placeholder="${ph||''}" ${dis} style="width:${wd||'100%'};border:1px solid var(--line);border-radius:7px;padding:6px 9px;font-family:inherit;font-size:.83rem;background:#fbfcfe">`;
   const savedLabel = e.updatedAt ? '마지막 저장 · '+new Date(e.updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}) : '자동 저장';
   let h=`<div class="mypanel" style="border-top-color:${w.t.color}">
     <h2><span class="tdot" style="background:${w.t.color}"></span>업무일지 — ${esc(w.t.name)} 선생님
-      <span id="wlSavedAt" style="font-weight:400;font-size:.78rem;color:var(--sub)">${savedLabel}</span>
+      <span id="wlSavedAt" style="font-weight:400;font-size:.78rem;color:var(--sub)">${readOnly?'다른 선생님 업무일지 (조회 전용)':savedLabel}</span>
       <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <button class="btn small" id="wlTempSave">📝 임시 저장</button>
-        ${submitBtn('journal',who,date,w.t.color)}
+        ${readOnly?'':`<button class="btn small" id="wlTempSave">📝 임시 저장</button>${submitBtn('journal',who,date,w.t.color)}`}
       </span></h2>`;
   // 월간·주간 (접힘 상태를 기억해서, 줄 추가·상태 변경으로 다시 그려져도 열려있던 채로 유지됨)
   h+=`<details id="wlMonthlyDetails" ${state.wlMonthlyOpen?'open':''} style="margin-top:10px"><summary style="cursor:pointer;font-size:.84rem;font-weight:800;color:var(--sub);padding:6px 0">월간 · 주간 업무 보기</summary>
@@ -4038,9 +4060,9 @@ function journalForm(who, date){
   for(const [sec,label] of [['monthly',`월간 ( ${mo} )월`],['weekly',`주간 ( ${wk} )주차`]]){
     h+=`<div><div class="myclass">${label} 업무 · 처리결과</div>`;
     e[sec].forEach((x,i)=>{
-      h+=`<div style="display:flex;gap:6px;margin:5px 0;align-items:center">${ti(sec,i,'t',x.t,(i+1)+') 업무 내용')}${resSel(sec,i,x.r)}<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button></div>`;
+      h+=`<div style="display:flex;gap:6px;margin:5px 0;align-items:center">${ti(sec,i,'t',x.t,(i+1)+') 업무 내용')}${resSel(sec,i,x.r)}${readOnly?'':`<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button>`}</div>`;
     });
-    h+=`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button></div>`;
+    h+=readOnly?'</div>':`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button></div>`;
   }
   h+=`</div></details>`;
   // Today / Tomorrow
@@ -4049,24 +4071,25 @@ function journalForm(who, date){
     e[sec].forEach((x,i)=>{
       h+=`<div style="display:flex;gap:6px;margin:5px 0;align-items:center">
         ${ti(sec,i,'t',x.t,'업무계획','42%')}${ti(sec,i,'d',x.d,'상세내용','46%')}
-        ${res?resSel(sec,i,x.r):starBtn(i,x.r)}<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button></div>`;
+        ${res?resSel(sec,i,x.r):starBtn(i,x.r)}${readOnly?'':`<button class="wl-del" data-sec="${sec}" data-i="${i}" title="이 줄 삭제" style="border:none;background:none;color:#c0392b;cursor:pointer;font-weight:800;padding:0 6px;font-size:1rem">×</button>`}</div>`;
     });
-    h+=`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button>`;
+    h+=readOnly?'':`<button class="btn small wl-add" data-sec="${sec}">+ 줄 추가</button>`;
   }
   // 수업내용 및 진도 (자동)
   h+=`<div class="myclass" style="margin-top:16px">수업내용 및 진도 <span style="font-weight:400">— 시간표·교재·과제 자료 기반 자동 채움, 수정 가능</span>
-    <button class="btn small" id="wlRefill" style="margin-left:8px">자료로 다시 채우기</button></div>`;
+    ${readOnly?'':'<button class="btn small" id="wlRefill" style="margin-left:8px">자료로 다시 채우기</button>'}</div>`;
   h+=`<div style="overflow-x:auto"><table style="min-width:760px"><thead><tr><th style="width:80px">반</th><th style="width:90px">시간</th><th>교재</th><th>수업</th><th>과제</th><th style="width:90px">진도</th><th></th></tr></thead><tbody>`;
   e.lessons.forEach((L,i)=>{
-    const cell=(f,w2)=>`<td><input type="text" class="wl-l" data-i="${i}" data-f="${f}" value="${esc(L[f]||'')}" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-family:inherit;font-size:.8rem"></td>`;
-    h+=`<tr>${cell('cls')}${cell('time')}${cell('book')}${cell('lesson')}${cell('hw')}${cell('prog')}<td><button class="del wl-ldel" data-i="${i}">✕</button></td></tr>`;
+    const cell=(f,w2)=>`<td><input type="text" class="wl-l" data-i="${i}" data-f="${f}" value="${esc(L[f]||'')}" ${dis} style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-family:inherit;font-size:.8rem"></td>`;
+    h+=`<tr>${cell('cls')}${cell('time')}${cell('book')}${cell('lesson')}${cell('hw')}${cell('prog')}<td>${readOnly?'':`<button class="del wl-ldel" data-i="${i}">✕</button>`}</td></tr>`;
   });
-  h+=`</tbody></table></div><button class="btn small" id="wlLadd">+ 수업 줄 추가</button>`;
+  h+=`</tbody></table></div>${readOnly?'':'<button class="btn small" id="wlLadd">+ 수업 줄 추가</button>'}`;
   h+=`</div>`;
   return h;
 }
-function bindJournal(who, date){
+function bindJournal(who, date, readOnly){
   const v=document.getElementById('view'); const e=wlGet(who,date);
+  if(readOnly) return; // 조회 전용 — 편집 이벤트 바인딩하지 않음
   const touch=()=>{ e.updatedAt=Date.now(); };
   const md=v.querySelector('#wlMonthlyDetails');
   if(md) md.addEventListener('toggle', ()=>{ state.wlMonthlyOpen=md.open; });
@@ -4351,7 +4374,7 @@ function renderReport(){
   const lt=loginTeacher();
   const days=weekOf(state.date);
   const curMonth=state.date.slice(0,7);
-  const canBrowseOthers = !lt || state.rkind==='weekly' || state.rkind==='handover'; // 주간 진도계획표·인수인계표는 모든 선생님이 다른 선생님 것도 조회 가능
+  const canBrowseOthers = true; // 업무일지·주간 진도계획표·인수인계표 모두 다른 선생님 것도 조회 가능 (본인 것만 수정 가능)
   const who = (canBrowseOthers && state.wlWho) ? state.wlWho : curWho();
   const w=whoTeacher(who);
   const viewingOthers = lt && !isMgr() && who!==whoKey(lt); // 실장 미만이 남의 것을 보는 중 → 읽기 전용
@@ -4374,7 +4397,7 @@ function renderReport(){
     <span style="font-size:.72rem;color:#8b93a7;margin-left:auto">${state.rkind==='daily'?'수업·진도는 자료로 자동, 나머지는 직접 작성 → 인쇄·엑셀로 제출':state.rkind==='weekly'?'다음 주 수업·교재·과제·진도를 자료로 자동 채움 · 테스트 등 직접 수정':'이 달에 한 번 작성 · 진도 현황은 주간 계획표에서 자동으로 최신 반영됨'}</span>
   </div>`;
   if(!w) return h+'<div class="empty">선생님을 먼저 등록해주세요 (설정 탭).</div>';
-  if(state.rkind==='daily') h+=journalForm(who, state.date);
+  if(state.rkind==='daily') h+=journalForm(who, state.date, viewingOthers);
   else if(state.rkind==='weekly') h+=weekPlanForm(who, days, viewingOthers);
   else h+=handoverForm(who, curMonth, viewingOthers);
   return h;
@@ -4390,11 +4413,11 @@ function bindReport(){
   const wn=v.querySelector('#wkNext'); if(wn) wn.onclick=()=>shift(7);
   const ws=v.querySelector('#wlWho'); if(ws) ws.onchange=()=>{state.wlWho=ws.value; render();};
   const lt=loginTeacher();
-  const canBrowseOthers = !lt || state.rkind==='weekly' || state.rkind==='handover';
+  const canBrowseOthers = true;
   const who = (canBrowseOthers && state.wlWho) ? state.wlWho : curWho();
   const viewingOthers = lt && !isMgr() && who!==whoKey(lt);
   if(whoTeacher(who)){
-    if(state.rkind==='daily') bindJournal(who, state.date);
+    if(state.rkind==='daily') bindJournal(who, state.date, viewingOthers);
     else if(state.rkind==='weekly') bindWeekPlan(who, weekOf(state.date), viewingOthers);
     else bindHandover(who, state.date.slice(0,7), viewingOthers);
   }
