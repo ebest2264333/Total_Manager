@@ -2406,15 +2406,31 @@ function renderWordTestToday(){
   studentsList=studentsList.slice().sort((a,b)=>(a.nameKo||'').localeCompare(b.nameKo||'','ko'));
   return header+viewChips+`<div class="rowlist">${studentsList.map(s=>wtStudentRow(s,date)).join('')}</div>`;
 }
+function classDeptForName(academy, className){
+  // 학생의 반 이름으로 그 반의 부서(초등/중등/고등)를 찾아준다 — 재시험 명단·통계 정렬에 사용
+  if(!className) return '';
+  const c=classesFor(state.month).find(x=>x.academy===academy && x.name===className);
+  return c ? (c.dept||'') : '';
+}
+const DEPT_SORT_ORDER={'초등':0,'중등':1,'고등':2};
 function renderWordTestPending(){
   const pending=store.wordTests.filter(r=>r.retestNeeded && !r.retestCompleted && !r.absent && (state.ac==='all'||r.academy===state.ac));
-  pending.sort((a,b)=>a.date.localeCompare(b.date));
+  pending.sort((a,b)=>{
+    const sa=store.students.find(x=>x.id===a.studentId), sb=store.students.find(x=>x.id===b.studentId);
+    const da=sa?classDeptForName(sa.academy, sa.className):'', db=sb?classDeptForName(sb.academy, sb.className):'';
+    const ra=DEPT_SORT_ORDER[da]!=null?DEPT_SORT_ORDER[da]:99, rb=DEPT_SORT_ORDER[db]!=null?DEPT_SORT_ORDER[db]:99;
+    if(ra!==rb) return ra-rb;
+    const ca=sa?(sa.className||''):'', cb=sb?(sb.className||''):'';
+    if(ca!==cb) return ca.localeCompare(cb,'ko',{numeric:true});
+    return a.date.localeCompare(b.date);
+  });
   if(!pending.length) return '<div class="empty">재시험 대기 학생이 없습니다.</div>';
   return '<div class="rowlist">'+pending.map(r=>{
     const s=store.students.find(x=>x.id===r.studentId);
-    const meta=[r.date, r.wordbook||'', r.lang||'', r.range||''].filter(Boolean).join(' · ');
+    const nameDisp = s ? studentDisplayName(s.academy, s.nameKo, s.className) : '(삭제된 학생)';
+    const meta=[s?s.className:'', r.date, r.wordbook||'', r.lang||'', r.range||''].filter(Boolean).join(' · ');
     return `<div class="rowitem" style="align-items:center">
-      <span class="key">${esc(s?s.nameKo:'(삭제된 학생)')} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
+      <span class="key">${esc(nameDisp)} ${MODE==='all'?bdg(r.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(meta)}</span></span>
       <span class="val"><button class="btn small" data-wtdone="${r.id}">✔ 재시험 완료 처리</button></span></div>`;
   }).join('')+'</div>';
 }
@@ -2430,12 +2446,18 @@ function renderWordTestStats(){
   const ids=[...new Set([...Object.keys(byW),...Object.keys(byM)])];
   const rows=ids.map(sid=>{
     const s=store.students.find(x=>x.id===sid);
-    return {name:s?s.nameKo:'(삭제된 학생)', week:byW[sid]||0, month:byM[sid]||0};
-  }).sort((a,b)=>b.month-a.month || b.week-a.week);
+    const dept = s ? classDeptForName(s.academy, s.className) : '';
+    return {name:s?studentDisplayName(s.academy,s.nameKo,s.className):'(삭제된 학생)', className:s?(s.className||''):'', dept, week:byW[sid]||0, month:byM[sid]||0};
+  }).sort((a,b)=>{
+    const ra=DEPT_SORT_ORDER[a.dept]!=null?DEPT_SORT_ORDER[a.dept]:99, rb=DEPT_SORT_ORDER[b.dept]!=null?DEPT_SORT_ORDER[b.dept]:99;
+    if(ra!==rb) return ra-rb;
+    if(a.className!==b.className) return a.className.localeCompare(b.className,'ko',{numeric:true});
+    return b.month-a.month || b.week-a.week;
+  });
   let h=`<div style="font-size:.85rem;margin-bottom:10px"><b>이번주 재시험</b> 총 ${weekRecs.length}건 · <b>이번달 재시험</b> 총 ${monthRecs.length}건</div>`;
   if(!rows.length) return h+'<div class="empty">재시험 기록이 없습니다.</div>';
-  h+='<table style="width:100%"><thead><tr><th>학생</th><th>이번주</th><th>이번달</th></tr></thead><tbody>'+
-    rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="text-align:center">${r.week}</td><td style="text-align:center">${r.month}</td></tr>`).join('')+
+  h+='<table style="width:100%"><thead><tr><th>학생</th><th>반</th><th>이번주</th><th>이번달</th></tr></thead><tbody>'+
+    rows.map(r=>`<tr><td>${esc(r.name)}</td><td style="text-align:center;color:var(--sub);font-size:.82rem">${esc(r.className)}</td><td style="text-align:center">${r.week}</td><td style="text-align:center">${r.month}</td></tr>`).join('')+
     '</tbody></table>';
   return h;
 }
@@ -3685,23 +3707,37 @@ function renderToday(list){
       ${alertList.map(x=>`<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val" style="display:flex;gap:8px;align-items:flex-start"><span>${esc(x.note)}</span><button class="btn small" data-rsalertdone="${x.id}" style="white-space:nowrap">✔ 해제</button></span></div>`).join('')}
     </div></div>`:'';
   const stayList=[]; const seenStay=new Set(); const seenStayName=new Set();
-  cls.forEach(c=>{
-    const k=ckey(c);
+  const collectStay=(cl)=>{
+    const k=ckey(cl);
     const recs=stay[k]||{};
-    const daySubjNamesForC=daySubjectNames(c, wd); // 과목이 하나뿐이어도 이름을 알 수 있게
+    const daySubjNamesForCl=daySubjectNames(cl, wd);
     Object.keys(recs).forEach(sname=>{
+      const rec=recs[sname];
+      if(!rec || !rec.stay) return;
       const dedupKey=k+'|'+sname;
-      if(recs[sname] && recs[sname].stay && !recs[sname].doneDate && !seenStay.has(dedupKey)){
-        seenStay.add(dedupKey);
-        seenStayName.add(c.academy+'|'+sname);
-        const bySubjEntries = recs[sname].bySubject ? Object.entries(recs[sname].bySubject).filter(([,v])=>v) : [];
-        let memo;
-        if(bySubjEntries.length) memo=bySubjEntries.map(([sub,v])=>`📚 ${sub}: ${v}`).join(' · ');
-        else if(recs[sname].memo){ const subjLabel=daySubjNamesForC.length===1?daySubjNamesForC[0]:c.name; memo=`📚 ${subjLabel}: ${recs[sname].memo}`; }
-        else memo='';
-        stayList.push({className:c.name, academy:c.academy, student:studentDisplayName(c.academy,sname,c.name), memo, k, s:sname});
+      if(seenStay.has(dedupKey)) return;
+      const bySubjEntries = rec.bySubject ? Object.entries(rec.bySubject).filter(([,v])=>v) : [];
+      const doneSubjects = rec.doneSubjects || {};
+      let subjects;
+      if(bySubjEntries.length){
+        subjects = bySubjEntries.map(([sub,memo])=>({subj:sub, memo, done:!!doneSubjects[sub]}));
+      } else if(rec.memo){
+        const subjLabel = daySubjNamesForCl.length===1 ? daySubjNamesForCl[0] : cl.name;
+        subjects = [{subj:subjLabel, memo:rec.memo, done:!!rec.doneDate}];
+      } else {
+        subjects = [{subj:null, memo:'', done:!!rec.doneDate}];
       }
+      if(!subjects.some(s=>!s.done)) return; // 전부 완료 처리됐으면 목록에서 뺀다 (과목별 완료 반영)
+      seenStay.add(dedupKey);
+      seenStayName.add(cl.academy+'|'+sname);
+      stayList.push({className:cl.name, academy:cl.academy, student:studentDisplayName(cl.academy,sname,cl.name), subjects, k, s:sname});
     });
+  };
+  cls.forEach(c=>{
+    collectStay(c);
+    // 합반 상대 반 학생도 같이 모아준다 (합반 카드 안에서 체크한 "오늘 남기"가 목록에서 누락되지 않도록)
+    const partner=mergedPartnerClass(c);
+    if(partner && classMeets(partner, wd) && partner.students && partner.students.length) collectStay(partner);
   });
   // 재시험 대상 학생도 "오늘 남는 학생"에 자동으로 합쳐서 보여준다 (재시험은 보통 남아서 다시 봐야 하므로)
   store.wordTests.filter(r=>r.date===state.date && r.retestNeeded && !r.retestCompleted && !r.absent).forEach(r=>{
@@ -3713,7 +3749,18 @@ function renderToday(list){
   });
   const staySection=isAdminRole()?`<div class="ysec" style="margin-top:16px;border-top:4px solid #b45309"><h3>🙋 오늘 남는 학생 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">${state.date} 전체 반 기준 (${stayList.length}명, 재시험 대상 포함)</span></h3>
     <div style="padding:0 16px 14px">
-      ${stayList.length?stayList.map(x=>`<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${x.memo?esc(x.memo):'<span style="color:#c3c9d6">메모 없음</span>'} ${x.isRetest?`<button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button>`:`<button class="btn small" data-staydone="${esc(x.k)}|${esc(x.s)}">✔ 완료</button>`}</span></div>`).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
+      ${stayList.length?stayList.map(x=>{
+        if(x.isRetest){
+          return `<div class="rowitem" style="align-items:center"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span><span class="val">${esc(x.memo)} <button class="btn small" data-wtdone="${x.wtId}">✔ 재시험 완료</button></span></div>`;
+        }
+        const openSubjects=x.subjects.filter(s=>!s.done);
+        const doneSubjects=x.subjects.filter(s=>s.done);
+        return `<div class="rowitem" style="align-items:flex-start"><span class="key">${esc(x.student)} ${MODE==='all'?bdg(x.academy):''} <span style="font-weight:400;color:var(--sub);font-size:.78rem">${esc(x.className)}</span></span>
+          <span class="val" style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+            ${openSubjects.map(s=>`<span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${s.subj?`<b style="font-size:.76rem;color:var(--sub)">📚 ${esc(s.subj)}</b>`:''} ${s.memo?esc(s.memo):'<span style="color:#c3c9d6">메모 없음</span>'} <button class="btn small" data-staydonesub="${esc(x.k)}|${esc(x.s)}|${esc(s.subj||'')}">✔ 완료</button></span>`).join('')}
+            ${doneSubjects.length?`<span style="font-size:.72rem;color:#8b93a7">✔ 완료: ${doneSubjects.map(s=>esc(s.subj||'')).join(', ')}</span>`:''}
+          </span></div>`;
+      }).join(''):'<div style="font-size:.82rem;color:#8b93a7">오늘 남는 학생이 없습니다.</div>'}
     </div></div>`:'';
 // 🚨 오늘 결석생 — 오늘 결석 처리된 학생을 한 곳에 모아 사유 입력·과목별 숙제 카톡 전송 여부를 관리 (모든 선생님에게 표시)
   const absentHwList=[]; const seenAbsent=new Set();
@@ -3896,6 +3943,19 @@ function bindToday(){
     const parts=b.dataset.staydone.split('|'); const st=parts.pop(); const k=parts.join('|'); // k(ckey) 자체에 '|'가 포함되어 있어 마지막 조각만 학생명으로 분리
     const st2=stayFor(state.date);
     st2[k]=st2[k]||{}; st2[k][st]=st2[k][st]||{}; st2[k][st].doneDate=todayISO(); save(); render(true);
+  });
+  v.querySelectorAll('[data-staydonesub]').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole())return;
+    const parts=b.dataset.staydonesub.split('|'); const subj=parts.pop(); const sname=parts.pop(); const k=parts.join('|');
+    const st2=stayFor(state.date);
+    st2[k]=st2[k]||{}; st2[k][sname]=st2[k][sname]||{};
+    if(subj && st2[k][sname].bySubject){
+      st2[k][sname].doneSubjects=st2[k][sname].doneSubjects||{};
+      st2[k][sname].doneSubjects[subj]=true;
+    } else {
+      st2[k][sname].doneDate=todayISO();
+    }
+    save(); render(true);
   });
   v.querySelectorAll('.absreasoninput').forEach(inp=>inp.onchange=()=>{
     const k=inp.dataset.k, s=inp.dataset.s, hw2=hwFor(state.date);
