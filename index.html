@@ -2696,12 +2696,13 @@ function studentRow(k, s, showClass, c, readOnly){
   const preCheck=stRec?(stRec.preCheck||''):'';
   const dis = readOnly?'disabled':'';
   const sibs=stRec?(stRec.siblings||[]).map(id=>{ const sib=store.students.find(x=>x.id===id); return sib?{id,name:studentDisplayName(sib.academy,sib.nameKo)}:null; }).filter(Boolean):[];
-  const sibLinks=sibs.length?`<div style="font-size:.76rem;color:var(--sub);margin-top:2px">👨‍👩‍👧‍👦 형제자매: ${sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;color:#2e5fb7">${esc(x.name)}</span>`).join(', ')}</div>`:'';
   return `<div class="srow">
     <input type="checkbox" data-k="${esc(k)}" data-s="${esc(s)}" ${r.done?'checked':''} ${dis}>
-    <span class="sn ${r.done?'done':''}">${hl(studentDisplayName(c.academy,s))}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}
-      ${stRec&&stRec.parentPhone?`<span style="font-size:.76rem;color:var(--sub);font-weight:400"> · 📞 ${esc(stRec.parentPhone)}</span>`:''}
-      ${sibLinks}</span>
+    <span class="sn ${r.done?'done':''}" style="display:flex;flex-direction:column;gap:2px">
+      <span>${hl(studentDisplayName(c.academy,s))}${showClass?`<span class="cls">${esc(c.name)} · ${AC[c.academy].label}</span>`:''}</span>
+      ${stRec&&stRec.parentPhone?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">📞 ${esc(stRec.parentPhone)}</span>`:''}
+      ${sibs.length?`<span style="font-size:.74rem;color:var(--sub);font-weight:400">👨‍👩‍👧‍👦 ${sibs.map(x=>`<span data-rsgoto="${x.id}" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px;color:#2e5fb7">${esc(x.name)}</span>`).join(', ')}</span>`:''}
+    </span>
     <div style="display:flex;flex-direction:column;gap:5px">
       ${preCheck?`<div style="font-size:.76rem;color:#b45309;background:#fff8ec;border:1px solid #f0dcae;border-radius:7px;padding:5px 8px">🔎 상담 전 확인: ${esc(preCheck)}</div>`:''}
       ${stRec&&stRec.note?`<div style="font-size:.76rem;color:#2e5fb7;background:#eef4ff;border:1px solid #cfe0fb;border-radius:7px;padding:5px 8px">📝 특이사항 코멘트(다른 선생님 포함): ${esc(stRec.note)}</div>`:''}
