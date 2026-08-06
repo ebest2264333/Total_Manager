@@ -28,9 +28,9 @@ a{color:inherit}
 ::-webkit-scrollbar-thumb{background:#cfd4e0;border-radius:99px;border:2px solid var(--bg)}
 ::-webkit-scrollbar-thumb:hover{background:#b7bdcf}
 
-header{background:linear-gradient(165deg,#151a30,#222b4d 65%,#26305a);color:#fff;padding:18px 20px 0;box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 6px 20px rgba(15,20,40,.18);position:relative}
+header{background:linear-gradient(165deg,#151a30,#222b4d 65%,#26305a);color:#fff;padding:20px 20px 18px;box-shadow:0 1px 0 rgba(255,255,255,.06) inset,0 6px 20px rgba(15,20,40,.18);position:relative}
 header::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,var(--ebest),#7b8ff0 45%,var(--icon))}
-.head-in{max-width:1180px;margin:0 auto}
+.head-in{max-width:1400px;margin:0 auto}
 .head-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 h1{font-size:1.18rem;font-weight:800;letter-spacing:-.02em}
 select#month{padding:8px 13px;border-radius:10px;border:1px solid rgba(255,255,255,.14);font-size:.92rem;font-weight:700;color:var(--ink);background:#fff;cursor:pointer;box-shadow:var(--shadow)}
@@ -1506,8 +1506,16 @@ function renderTimetableWeek(list){
   occ.forEach(o=>{ if(o.r) timeSet.add(o.r[0]); });
   const times=[...timeSet].sort((x,y)=>x-y);
   const chip=(o)=>{
-    const tea=o.s&&o.s.teacher ? o.s.teacher : '';
+    let tea=o.s&&o.s.teacher ? o.s.teacher : '';
     const room=o.s&&o.s.room ? o.s.room : '';
+    if(!tea){
+      // 담당이 비어있으면 합반 상대 반(양방향)에서 담당을 찾아온다 — 위쪽 시간(time) fallback과 동일한 방식
+      const partner=mergedCounterpart(o.c);
+      if(partner && partner.subjects){
+        const matchSub=(o.s&&o.s.subject)?partner.subjects.find(x=>x.subject===o.s.subject&&x.teacher):null;
+        tea=(matchSub&&matchSub.teacher)||partner.subjects.map(x=>x.teacher).find(Boolean)||'';
+      }
+    }
     const teaColor=teacherColorByName(o.c.academy, tea);
     const wordTest=isWordTestSlot(o.r);
     const mp=mergedPartnerClass(o.c);
@@ -1548,7 +1556,14 @@ function renderTimetableWeek(list){
   const untimedBlock=untimedOcc.length?`<div style="margin-top:12px"><div style="font-size:.82rem;font-weight:700;color:var(--sub);margin-bottom:6px">⏱ 시간 미정 (${untimedOcc.length}건)</div>
     ${untimedOcc.map(o=>{
       const label=o.s&&o.s.subject ? `${o.c.name} · ${o.s.subject}` : o.c.name;
-      const tea=o.s&&o.s.teacher ? o.s.teacher : '';
+      let tea=o.s&&o.s.teacher ? o.s.teacher : '';
+      if(!tea){
+        const partner=mergedCounterpart(o.c);
+        if(partner && partner.subjects){
+          const matchSub=(o.s&&o.s.subject)?partner.subjects.find(x=>x.subject===o.s.subject&&x.teacher):null;
+          tea=(matchSub&&matchSub.teacher)||partner.subjects.map(x=>x.teacher).find(Boolean)||'';
+        }
+      }
       return `<span data-ttjump="${o.d}|${o.c._id}" style="cursor:pointer;display:inline-block;margin:3px 4px 0 0;padding:5px 9px;border-radius:7px;font-size:.78rem;background:#f6f8fc;border:1px solid var(--line)">${esc(label)} (${o.d}) · ${esc(tea||'담당 미지정')}</span>`;
     }).join('')}</div>`:'';
   return grid+untimedBlock;
@@ -3129,7 +3144,13 @@ function activeStudents(c){
 }
 function todayClasses(list){
   const wd=wdOf(state.date);
-  let cls=list.filter(c=>classMeets(c,wd));
+  let cls=list.filter(c=>{
+    if(!classMeets(c,wd)) return false;
+    // 오늘(그 요일) 과목이 전부 "단어시험"뿐이면 오늘 기록 카드에서는 숨긴다 (단어시험은 하단 [단어시험] 섹션에서 별도 기록)
+    const daySubjs=(c.subjects||[]).filter(s=>subjOnDay(s,wd));
+    if(daySubjs.length && daySubjs.every(isWordTestSubject)) return false;
+    return true;
+  });
 
   // 🔗 합반: 합반 상대(파트너) 반은 메인 카드 안에 같이 표시되므로, 별도 카드로 중복 표시되지 않게 걸러낸다
   const absorbedKeys=new Set();
