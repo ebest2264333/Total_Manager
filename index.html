@@ -1341,9 +1341,18 @@ function combinedMergedName(c, mp){
   return c.name+','+mp.name;
 }
 function mergeSubjectLists(a, b){
-  // 합반 표시용으로 두 반의 과목 목록을 과목명 기준 중복 없이 합친다
-  const out=[...(a||[])]; const seen=new Set(out.map(s=>s.subject));
-  (b||[]).forEach(s=>{ if(!seen.has(s.subject)){ out.push(s); seen.add(s.subject); } });
+  // 합반 표시용으로 두 반의 과목 목록을 과목명 기준으로 합친다. 같은 과목이 양쪽에 다 있으면
+  // 교재·진도 등 값이 채워진 쪽을 우선해서 합쳐서, 한쪽 반만 비어있어도 다른 쪽에 적힌 실제 값이 가려지지 않게 한다
+  const out=[]; const idx={};
+  (a||[]).forEach(s=>{ idx[s.subject]=out.length; out.push({...s}); });
+  (b||[]).forEach(s=>{
+    if(s.subject in idx){
+      const cur=out[idx[s.subject]];
+      out[idx[s.subject]]={...cur, book:cur.book||s.book, progress:cur.progress||s.progress, hw:cur.hw||s.hw, teacher:cur.teacher||s.teacher, note:cur.note||s.note};
+    } else {
+      idx[s.subject]=out.length; out.push({...s});
+    }
+  });
   return out;
 }
 function dedupeMergedClasses(cls){
@@ -4267,11 +4276,30 @@ function autoLessons(who, date){
     }
     if(!subs.length) return;
     const asg=((((store.homework[date]||{})[ckey(c)])||{})['_assign']||{}).note||'';
-    subs.forEach(s=>rows.push({cls:c.name,time:timeOfDay(c,wd),book:s.book||'',lesson:s.subject||'',subj:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''}));
+    subs.forEach(s=>rows.push({cls:c.name,time:timeOfDay(c,wd),book:s.book||'',lesson:'',subj:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''})); // "수업" 칸은 과목명을 기본으로 채우지 않고 비워둔다 — 과목명은 옆 "과목" 칸에 이미 표시되고, 여기는 그날 실제 수업 내용을 직접 적는 칸이라서
   });
   return rows;
 }
 function pad(arr,n,mk){ arr=arr||[]; while(arr.length<n) arr.push(mk()); return arr; }
+function weeklyPlanRowFor(who, date, cls){
+  // 주간 진도계획표에 이미 적혀있는 그 날짜·반 줄을 찾아준다 (업무일지 자동 채움 때 우선 반영하기 위함)
+  const wp=store.weekplan[who]; if(!wp) return null;
+  for(const wk in wp){
+    const rows=wp[wk] && wp[wk].rows; if(!rows) continue;
+    const r=rows.find(r=>r.date===date && r.cls===cls);
+    if(r) return r;
+  }
+  return null;
+}
+function autoLessonsFilled(who, date){
+  // 시간표 기준 기본값에, 주간 진도계획표에 이미 적어둔 진도·과제·교재가 있으면 그걸 우선 채워넣는다
+  return autoLessons(who, date).map(L=>{
+    const wr=weeklyPlanRowFor(who, date, L.cls);
+    if(!wr) return L;
+    const prog=[wr.prog, wr.mprog].filter(Boolean).join(' → ');
+    return {...L, book:wr.book||L.book, hw:wr.hw||L.hw, prog:prog||L.prog};
+  });
+}
 function wlGet(who, date){
   store.worklog[who]=store.worklog[who]||{};
   if(!store.worklog[who][date]){
@@ -4283,7 +4311,7 @@ function wlGet(who, date){
       weekly:  prev? prev.weekly.filter(x=>x.t).map(x=>({t:x.t,r:''}))  : [],
       today:   prev? prev.tomorrow.filter(x=>x.t).map(x=>({t:x.t,d:x.d,r:''})) : [],
       tomorrow: [],
-      lessons: autoLessons(who, date),
+      lessons: autoLessonsFilled(who, date),
       updatedAt: 0 // 아직 아무것도 안 적은 빈 초안 표시 — 다른 기기의 실제 제출 내용이 이 값에 덮이지 않게 함
     };
     save();
@@ -4374,8 +4402,8 @@ function bindJournal(who, date, readOnly){
   v.querySelectorAll('.wl-ldel').forEach(b=>b.onclick=()=>{ e.lessons.splice(Number(b.dataset.i),1); touch(); save(); render(true); });
   const la=v.querySelector('#wlLadd'); if(la) la.onclick=()=>{ e.lessons.push({cls:'',time:'',book:'',lesson:'',hw:'',prog:''}); touch(); save(); render(true); };
   const rf=v.querySelector('#wlRefill'); if(rf) rf.onclick=()=>{
-    if(!confirm('수업내용 및 진도 표를 학원 자료 기준으로 다시 채울까요? (직접 수정한 내용은 지워집니다)')) return;
-    e.lessons=autoLessons(who,date); touch(); save(); render(true);
+    if(!confirm('수업내용 및 진도 표를 학원 자료 기준으로 다시 채울까요? (주간 진도계획표에 이미 적어둔 진도·과제·교재가 있으면 그건 그대로 채워지고, 그 외 직접 수정한 내용은 지워집니다)')) return;
+    e.lessons=autoLessonsFilled(who,date); touch(); save(); render(true);
   };
   const ts=v.querySelector('#wlTempSave'); if(ts) ts.onclick=()=>{
     touch(); save();
