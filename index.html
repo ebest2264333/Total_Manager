@@ -500,6 +500,13 @@ function mergeField(local, remote){
     return Object.values(map);
   }
   if(local && remote && typeof local==='object' && typeof remote==='object' && !Array.isArray(local)){
+    // 업무일지 날짜별 기록·주간계획표처럼 안쪽에 id 없는 배열을 담은 "레코드"는, updatedAt이 있으면
+    // 통째로 최신 쪽을 택한다 — 부분(배열 단위) 병합을 하면 아직 아무것도 안 적은 빈 초안이
+    // 실제로 제출된 내용을 덮어써버리는 사고가 생기기 때문
+    if('updatedAt' in local || 'updatedAt' in remote){
+      const lt=tsOf(local.updatedAt), rt=tsOf(remote.updatedAt);
+      return rt>lt ? remote : local;
+    }
     // uploads처럼 값이 배열인 맵이면 안쪽도 재귀 병합
     const out={...remote};
     for(const k in local){ out[k] = (k in remote) ? mergeField(local[k], remote[k]) : local[k]; }
@@ -792,6 +799,8 @@ function updateSubjectField(a,m,id,idx,field,value){
 
 /* ---------- 상태 ---------- */
 const todayISO = ()=>{ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,10); }; // 브라우저 시스템 시간대와 무관하게 항상 KST(한국 시간) 기준 날짜
+function kstTimestamp(){ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,16).replace('T',' '); } // "YYYY-MM-DD HH:MM" 형태, 항상 KST 기준
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } // Date 객체를 (그 객체가 나타내는 지역 날짜 그대로) "YYYY-MM-DD"로 — toISOString()은 UTC로 변환하면서 하루가 밀릴 수 있어 쓰지 않는다
 const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
 let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:(allDataMonths().slice(-1)[0]||'2026-07'), tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
 
@@ -1051,8 +1060,8 @@ function parseWork(text, lt){
   const cls=aiClasses(lt);
   // 날짜
   let date=todayISO();
-  if(/어제/.test(t)){ const d=new Date(); d.setDate(d.getDate()-1); date=d.toISOString().slice(0,10); }
-  else if(/그제|그저께/.test(t)){ const d=new Date(); d.setDate(d.getDate()-2); date=d.toISOString().slice(0,10); }
+  if(/어제/.test(t)){ const d=new Date(todayISO()+'T00:00:00'); d.setDate(d.getDate()-1); date=ymd(d); }
+  else if(/그제|그저께/.test(t)){ const d=new Date(todayISO()+'T00:00:00'); d.setDate(d.getDate()-2); date=ymd(d); }
   const dm=t.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
   if(dm) date=`${date.slice(0,4)}-${String(+dm[1]).padStart(2,'0')}-${String(+dm[2]).padStart(2,'0')}`;
   // 학생 (명단 대조)
@@ -4140,7 +4149,7 @@ function consultOn(dateISO){
 function weekOf(dateISO){
   const d=new Date(dateISO+'T00:00:00');
   const mon=new Date(d); mon.setDate(d.getDate()-((d.getDay()+6)%7));
-  return [...Array(6)].map((_,i)=>{const x=new Date(mon); x.setDate(mon.getDate()+i); return x.toISOString().slice(0,10);});
+  return [...Array(6)].map((_,i)=>{const x=new Date(mon); x.setDate(mon.getDate()+i); return ymd(x);});
 }
 function repWorkDaily(dateISO){
   const st=dayStats(dateISO); const cons=consultOn(dateISO);
@@ -4258,7 +4267,8 @@ function wlGet(who, date){
       weekly:  prev? prev.weekly.filter(x=>x.t).map(x=>({t:x.t,r:''}))  : [],
       today:   prev? prev.tomorrow.filter(x=>x.t).map(x=>({t:x.t,d:x.d,r:''})) : [],
       tomorrow: [],
-      lessons: autoLessons(who, date)
+      lessons: autoLessons(who, date),
+      updatedAt: 0 // 아직 아무것도 안 적은 빈 초안 표시 — 다른 기기의 실제 제출 내용이 이 값에 덮이지 않게 함
     };
     save();
   }
@@ -4437,7 +4447,7 @@ function autoWeekRows(who, days){
 function wpGet(who, wkStart, days){
   store.weekplan[who]=store.weekplan[who]||{};
   if(!store.weekplan[who][wkStart]){
-    store.weekplan[who][wkStart]={rows:autoWeekRows(who,days)};
+    store.weekplan[who][wkStart]={rows:autoWeekRows(who,days), updatedAt:0}; // updatedAt:0 — 빈 초안이 다른 기기의 실제 내용을 덮어쓰지 않도록
     save();
   }
   return store.weekplan[who][wkStart];
@@ -4478,6 +4488,7 @@ function bindWeekPlan(who, days, readOnly){
     
     // 1. 주간진도계획표 데이터 정상 업데이트
     wp.rows[idx][field] = val; 
+    wp.updatedAt = Date.now();
     
     // 2. 업무 보고서(일간 업무일지) 자동 연동
     const rDate = wp.rows[idx].date;
@@ -4514,6 +4525,7 @@ function bindWeekPlan(who, days, readOnly){
   const addBtn = v.querySelector('#wpAdd');
   if(addBtn) addBtn.onclick = async ()=>{
     wp.rows.push({date: days[0], cls:'', book:'', prog:'', test:'', hw:'', mprog:''});
+    wp.updatedAt = Date.now();
     await saveAndSync();
     render(true);
   };
@@ -4522,6 +4534,7 @@ function bindWeekPlan(who, days, readOnly){
     const idx = Number(b.dataset.i);
     if(!confirm('이 줄을 삭제할까요?')) return;
     wp.rows.splice(idx, 1);
+    wp.updatedAt = Date.now();
     await saveAndSync();
     render(true);
   });
@@ -4530,6 +4543,7 @@ function bindWeekPlan(who, days, readOnly){
   if(refBtn) refBtn.onclick = async ()=>{
     if(!confirm('주간 진도계획표를 학원 자료 기준으로 다시 채울까요? (직접 수정한 내용은 지워집니다)')) return;
     wp.rows = autoWeekRows(who, days);
+    wp.updatedAt = Date.now();
     await saveAndSync();
     render(true);
   };
@@ -4646,7 +4660,7 @@ function bindReport(){
   const rd=v.querySelector('#rkD'); if(rd) rd.onclick=()=>{state.rkind='daily'; render();};
   const rw=v.querySelector('#rkW'); if(rw) rw.onclick=()=>{state.rkind='weekly'; render();};
   const rh=v.querySelector('#rkH'); if(rh) rh.onclick=()=>{state.rkind='handover'; render();};
-  const shift=n=>{ const dt=new Date(state.date+'T00:00:00'); dt.setDate(dt.getDate()+n); state.date=dt.toISOString().slice(0,10); render(); };
+  const shift=n=>{ const dt=new Date(state.date+'T00:00:00'); dt.setDate(dt.getDate()+n); state.date=ymd(dt); render(); };
   const wp=v.querySelector('#wkPrev'); if(wp) wp.onclick=()=>shift(-7);
   const wn=v.querySelector('#wkNext'); if(wn) wn.onclick=()=>shift(7);
   const ws=v.querySelector('#wlWho'); if(ws) ws.onchange=()=>{state.wlWho=ws.value; render();};
@@ -4772,7 +4786,7 @@ function downloadMasterXlsx(aOnly){
   const out=XLSX.write(wb,{type:'array',bookType:'xlsx'});
   const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   const u=URL.createObjectURL(blob); const el=document.createElement('a');
-  el.href=u; el.download='마스터_'+(aOnly?AC[aOnly].label:'전체')+'_'+new Date().toISOString().slice(0,10)+'.xlsx'; el.click(); URL.revokeObjectURL(u);
+  el.href=u; el.download='마스터_'+(aOnly?AC[aOnly].label:'전체')+'_'+todayISO()+'.xlsx'; el.click(); URL.revokeObjectURL(u);
 }
 function activeNames(a){
   const ms=monthsOf(a); const use=ms.filter(x=>x<=state.month).pop()||ms[ms.length-1];
@@ -4920,7 +4934,7 @@ function submitDoc(kind, who, ref){
   }
   if(!payload){ alert('제출할 내용이 없습니다.'); return; }
   const ex=findSubmit(kind,who,ref);
-  const ts=new Date().toISOString().slice(0,16).replace('T',' ');
+  const ts=kstTimestamp();
   if(ex){ ex.ts=ts; ex.updatedAt=Date.now(); } else store.submits.push({id:kind+'|'+who+'|'+ref, kind,who,ref,name:w.t.name,a:w.a,ts,updatedAt:Date.now()});
   save();
   const pack={v:'submit1',kind,ref,teacher:{name:w.t.name,academy:w.a,color:w.t.color},submittedAt:ts,payload};
@@ -5159,6 +5173,12 @@ function renderCal(){
       <input type="text" id="mtAtt" placeholder="참석자 (예: Iris, April, Matilda...)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
       <input type="text" id="mtTitle" placeholder="제목 (예: 본관 중/고등부 주간회의)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit"></div>
     <textarea id="mtBody" placeholder="회의 내용… (관심 반·학생, 직전보강 일정, 휴강·정상수업 안내, 신입생 등)" style="width:100%;min-height:90px;border:1.5px solid var(--line);border-radius:8px;padding:8px 11px;font-family:inherit;font-size:.86rem;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+      <button class="btn small" id="mtAttachBtn">📎 파일/이미지 첨부</button>
+      <input type="file" id="mtAttachFile" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.hwp" multiple style="display:none">
+      ${(state.mtPendingAttachments&&state.mtPendingAttachments.length)?`<span style="display:flex;gap:6px;flex-wrap:wrap">${state.mtPendingAttachments.map((f,i)=>`<span style="font-size:.78rem;background:#eef0f6;border-radius:8px;padding:4px 9px">${esc(f.name)} <b data-mtattrm="${i}" style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')}</span>`:''}
+    </div>
+    <div style="font-size:.72rem;color:#8b93a7;margin-top:4px">이미지는 자동으로 용량을 줄여서 첨부돼요. 파일은 5MB 이하만 가능합니다.</div>
     <div style="margin-top:8px"><button class="btn primary" id="mtAdd">회의록 등록</button></div></div>`;
   const mts=[...store.meetings].sort((x,y)=>y.date.localeCompare(x.date));
   if(!mts.length) h+='<div style="font-size:.83rem;color:#8b93a7">등록된 회의록이 없습니다.</div>';
@@ -5167,7 +5187,9 @@ function renderCal(){
       <h2 style="font-size:.95rem">${esc(mt.title||'주간회의')} <span style="font-weight:400;font-size:.78rem;color:var(--sub)">· ${mt.date} (${wdOf(mt.date)})</span>
         <button class="del mtDel" data-id="${mt.id}" style="margin-left:auto">삭제</button></h2>
       <div class="sub">주관: <b>${esc(mt.host||'-')}</b> · 참석: ${esc(mt.att||'-')}</div>
-      <div style="font-size:.86rem;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef0f6;border-radius:10px;padding:10px 13px">${hl(mt.body||'')}</div></div>`;
+      <div style="font-size:.86rem;white-space:pre-wrap;background:#fbfcfe;border:1px solid #eef0f6;border-radius:10px;padding:10px 13px">${hl(mt.body||'')}</div>
+      ${(mt.attachments&&mt.attachments.length)?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${mt.attachments.map(f=>(f.type&&f.type.startsWith('image/'))?`<a href="${f.dataUrl}" target="_blank" title="${esc(f.name)}"><img src="${f.dataUrl}" style="width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>`:`<a href="${f.dataUrl}" download="${esc(f.name)}" style="font-size:.78rem;background:#eef0f6;border-radius:8px;padding:6px 10px;text-decoration:none;color:var(--ink);border:1px solid var(--line)">📎 ${esc(f.name)}</a>`).join('')}</div>`:''}
+      </div>`;
   });
   h+='</div></div>';
   // ── 입학 상담일정 (관리자·실장 전용) ──
@@ -5176,6 +5198,30 @@ function renderCal(){
       <div style="padding:0 16px 14px">${renderAdmission(true)}</div></div>`;
   }
   return h;
+}
+function fileToDataUrl(file, compress){
+  // 이미지는 캔버스로 리사이즈·압축해서 동기화 용량을 줄인다. 이미지가 아니면 그대로 base64로 읽는다.
+  return new Promise((resolve)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      if(!compress){ resolve(reader.result); return; }
+      const img=new Image();
+      img.onload=()=>{
+        const maxW=1000;
+        const scale=Math.min(1, maxW/img.width);
+        const canvas=document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round(img.width*scale));
+        canvas.height=Math.max(1,Math.round(img.height*scale));
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror=()=>resolve(reader.result);
+      img.src=reader.result;
+    };
+    reader.onerror=()=>resolve(null);
+    reader.readAsDataURL(file);
+  });
 }
 function bindCal(){
   const v=document.getElementById('view');
@@ -5188,13 +5234,30 @@ function bindCal(){
   };
   v.querySelectorAll('.evDel').forEach(b=>b.onclick=()=>{
     store.calendar=store.calendar.filter(x=>String(x.id)!==b.dataset.id); save(); render(true); });
+  const attBtn=v.querySelector('#mtAttachBtn'), attFile=v.querySelector('#mtAttachFile');
+  if(attBtn) attBtn.onclick=()=>attFile.click();
+  if(attFile) attFile.onchange=async ()=>{
+    const files=[...attFile.files];
+    state.mtPendingAttachments=state.mtPendingAttachments||[];
+    for(const f of files){
+      if(f.size>5*1024*1024){ alert(f.name+' 파일이 너무 큽니다 (5MB 이하만 첨부할 수 있어요)'); continue; }
+      const dataUrl=await fileToDataUrl(f, f.type.startsWith('image/'));
+      if(dataUrl) state.mtPendingAttachments.push({name:f.name, type:f.type, dataUrl});
+    }
+    attFile.value='';
+    render(true);
+  };
+  v.querySelectorAll('[data-mtattrm]').forEach(b=>b.onclick=()=>{
+    state.mtPendingAttachments.splice(Number(b.dataset.mtattrm),1); render(true);
+  });
   const ma=v.querySelector('#mtAdd');
   if(ma) ma.onclick=()=>{
     const body=v.querySelector('#mtBody').value.trim();
     if(!body){ alert('회의 내용을 입력해주세요.'); return; }
     store.meetings.push({id:Date.now(), date:v.querySelector('#mtDate').value||todayISO(),
       host:v.querySelector('#mtHost').value.trim(), att:v.querySelector('#mtAtt').value.trim(),
-      title:v.querySelector('#mtTitle').value.trim(), body});
+      title:v.querySelector('#mtTitle').value.trim(), body, attachments:state.mtPendingAttachments||[]});
+    state.mtPendingAttachments=[];
     save(); render(true);
   };
   v.querySelectorAll('.mtDel').forEach(b=>b.onclick=()=>{
@@ -5730,7 +5793,7 @@ function parseWorkbook(wb){
       const hdr=rows[hi].map(x=>String(x).trim());
       const col=n=>hdr.indexOf(n);
       const evs=[];
-      const dstr=v=>{ if(v instanceof Date) return v.toISOString().slice(0,10); const s=String(v).trim(); return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):''; };
+      const dstr=v=>{ if(v instanceof Date) return ymd(v); const s=String(v).trim(); return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):''; };
       for(let r=hi+1;r<rows.length;r++){
         const row=rows[r];
         const s=dstr(row[col('시작일')]), t=String(row[col('제목')]??'').trim();
@@ -5828,12 +5891,12 @@ function bindSet(){
   };
   const se=v.querySelector('#shareExp');
   if(se) se.onclick=()=>{
-    const pack={v:'share1', exportedAt:new Date().toISOString().slice(0,16).replace('T',' ')};
+    const pack={v:'share1', exportedAt:kstTimestamp()};
     SHARE_FIELDS.forEach(f=>pack[f]=store[f]);
     pack.sync=store.sync;
     const blob=new Blob([JSON.stringify(pack,null,1)],{type:'application/json'});
     const u=URL.createObjectURL(blob); const el=document.createElement('a');
-    el.href=u; el.download='학원자료_배포_'+new Date().toISOString().slice(0,10)+'.json'; el.click(); URL.revokeObjectURL(u);
+    el.href=u; el.download='학원자료_배포_'+todayISO()+'.json'; el.click(); URL.revokeObjectURL(u);
   };
   const sib=v.querySelector('#shareImpBtn'), sif=v.querySelector('#shareImp');
   if(sib) sib.onclick=()=>sif.click();
@@ -5963,7 +6026,7 @@ function bindSet(){
   if(exp) exp.onclick=()=>{
     const blob=new Blob([JSON.stringify(store,null,1)],{type:'application/json'});
     const u=URL.createObjectURL(blob); const el=document.createElement('a');
-    el.href=u; el.download='상담데이터_'+new Date().toISOString().slice(0,10)+'.json'; el.click(); URL.revokeObjectURL(u);
+    el.href=u; el.download='상담데이터_'+todayISO()+'.json'; el.click(); URL.revokeObjectURL(u);
   };
   const impBtn=v.querySelector('#impBtn'), imp=v.querySelector('#imp');
   if(impBtn) impBtn.onclick=()=>imp.click();
@@ -6177,7 +6240,7 @@ function reportHTML(){
     const who=curWho();
     if(whoTeacher(who)) return state.rkind==='weekly' ? repWeekPlan(who, weekOf(state.date)) : repDailyJournal(who, state.date);
   }
-  const date=new Date().toISOString().slice(0,10);
+  const date=todayISO();
   const tabName={dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
   let extra='';
   if(state.tab==='consult'&&state.tf) extra=' — '+store.teachers[state.tf.a][state.tf.i].name+' 선생님';
