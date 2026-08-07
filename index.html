@@ -1265,6 +1265,17 @@ function prevBookOptions(a, srcMonth, className, subjectName){
 function teacherDatalist(a){
   return `<datalist id="dl_teachers_${a}">${(store.teachers[a]||[]).map(t=>`<option value="${esc(t.name)}">`).join('')}</datalist>`;
 }
+function classNameCompatible(a, b){
+  // 반 이름 표기가 서로 조금 달라도(예: 학생명단엔 "JB1,2", 실제 반은 "JB2") 같은 반으로 인식한다 —
+  // 앞쪽 글자(부서 표기)가 같고, 반 번호 숫자가 하나라도 겹치면 같은 반으로 본다
+  if(!a || !b) return false;
+  if(a===b) return true;
+  const parse=s=>{ const m=String(s).match(/^([^\d]*)([\d,]*)/); return {letters:(m?m[1]:'').trim(), nums:(m&&m[2]?m[2].split(',').map(x=>x.trim()).filter(Boolean):[])}; };
+  const pa=parse(a), pb=parse(b);
+  if(!pa.letters || pa.letters!==pb.letters) return false;
+  if(!pa.nums.length || !pb.nums.length) return false;
+  return pa.nums.some(n=>pb.nums.includes(n));
+}
 function findStudentRecord(academy, nameKo, className){
   // 같은 학원 안에 동명이인이 있을 수 있어(예: "이유주"가 두 명), 반 이름까지 같이 확인해 정확한 학생을 찾는다.
   // 반 이름을 모르거나 그 반에 일치하는 학생이 없으면 첫 번째로 찾은 학생을 반환한다 (기존 동작 유지).
@@ -1273,6 +1284,9 @@ function findStudentRecord(academy, nameKo, className){
   if(className){
     const exact=cands.find(x=>x.className===className);
     if(exact) return exact;
+    // 학생명단에 저장된 반 이름 표기가 실제 반 이름과 정확히 안 맞을 수 있어, 느슨하게 한 번 더 확인
+    const fuzzy=cands.find(x=>classNameCompatible(x.className, className));
+    if(fuzzy) return fuzzy;
   }
   return cands[0];
 }
@@ -3271,6 +3285,8 @@ function matchStudentByRosterName(academy, sname, className){
     if(cands.length>1 && className){
       const exact=cands.find(x=>x.className===className);
       if(exact) return exact;
+      const fuzzy=cands.find(x=>classNameCompatible(x.className, className));
+      if(fuzzy) return fuzzy;
     }
     if(cands.length) return cands[0];
   }
@@ -4251,7 +4267,7 @@ function autoLessons(who, date){
     }
     if(!subs.length) return;
     const asg=((((store.homework[date]||{})[ckey(c)])||{})['_assign']||{}).note||'';
-    subs.forEach(s=>rows.push({cls:c.name,time:timeOfDay(c,wd),book:s.book||'',lesson:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''}));
+    subs.forEach(s=>rows.push({cls:c.name,time:timeOfDay(c,wd),book:s.book||'',lesson:s.subject||'',subj:s.subject||'',hw:asg||s.hw||'',prog:s.progress||''}));
   });
   return rows;
 }
@@ -4316,10 +4332,11 @@ function journalForm(who, date, readOnly){
   // 수업내용 및 진도 (자동)
   h+=`<div class="myclass" style="margin-top:16px">수업내용 및 진도 <span style="font-weight:400">— 시간표·교재·과제 자료 기반 자동 채움, 수정 가능</span>
     ${readOnly?'':'<button class="btn small" id="wlRefill" style="margin-left:8px">자료로 다시 채우기</button>'}</div>`;
-  h+=`<div style="overflow-x:auto"><table style="min-width:760px"><thead><tr><th style="width:80px">반</th><th style="width:90px">시간</th><th>교재</th><th>수업</th><th>과제</th><th style="width:90px">진도</th><th></th></tr></thead><tbody>`;
+  h+=`<div style="overflow-x:auto"><table style="min-width:760px"><thead><tr><th style="width:80px">반</th><th style="width:90px">시간</th><th>교재</th><th style="width:70px">과목</th><th>수업</th><th>과제</th><th style="width:90px">진도</th><th></th></tr></thead><tbody>`;
   e.lessons.forEach((L,i)=>{
     const cell=(f,w2)=>`<td><input type="text" class="wl-l" data-i="${i}" data-f="${f}" value="${esc(L[f]||'')}" ${dis} style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-family:inherit;font-size:.8rem"></td>`;
-    h+=`<tr>${cell('cls')}${cell('time')}${cell('book')}${cell('lesson')}${cell('hw')}${cell('prog')}<td>${readOnly?'':`<button class="del wl-ldel" data-i="${i}">✕</button>`}</td></tr>`;
+    const subjCell=`<td style="text-align:center;font-size:.78rem;color:var(--sub);font-weight:700" title="시간표에 등록된 원래 과목명 — 진도·교재가 저장될 기준이라 여기서는 고칠 수 없습니다">${esc(L.subj||L.lesson||'-')}</td>`;
+    h+=`<tr>${cell('cls')}${cell('time')}${cell('book')}${subjCell}${cell('lesson')}${cell('hw')}${cell('prog')}<td>${readOnly?'':`<button class="del wl-ldel" data-i="${i}">✕</button>`}</td></tr>`;
   });
   h+=`</tbody></table></div>${readOnly?'':'<button class="btn small" id="wlLadd">+ 수업 줄 추가</button>'}`;
   h+=`</div>`;
@@ -4347,11 +4364,11 @@ function bindJournal(who, date, readOnly){
     e.lessons[i][f]=inp.value; touch(); save();
     if(f==='book'){
       const L=e.lessons[i]; const w=whoTeacher(who);
-      if(w && L.cls && L.lesson){ syncBookToClass(w.a, L.cls, L.lesson, date.slice(0,7), inp.value); save(); }
+      if(w && L.cls && (L.subj||L.lesson)){ syncBookToClass(w.a, L.cls, L.subj||L.lesson, date.slice(0,7), inp.value, wdOf(date)); save(); }
     }
     if(f==='prog'){
       const L=e.lessons[i]; const w=whoTeacher(who);
-      if(w && L.cls && L.lesson){ syncProgressToClass(w.a, L.cls, L.lesson, date.slice(0,7), inp.value); save(); }
+      if(w && L.cls && (L.subj||L.lesson)){ syncProgressToClass(w.a, L.cls, L.subj||L.lesson, date.slice(0,7), inp.value, wdOf(date)); save(); }
     }
   });
   v.querySelectorAll('.wl-ldel').forEach(b=>b.onclick=()=>{ e.lessons.splice(Number(b.dataset.i),1); touch(); save(); render(true); });
@@ -4436,8 +4453,13 @@ function splitProg(p){ const parts=String(p||'').split('→'); return [ (parts[0
 function autoWeekRows(who, days){
   const rows=[];
   days.forEach(d=>{
-    autoLessons(who,d).forEach(L=>{
-      if(String(L.lesson||'').trim().toUpperCase()==='IBT') return; // IBT는 주간 진도계획표 작성 대상에서 제외
+    // 그 날짜에 이미 작성된 업무일지가 있으면, 시간표 기준으로 다시 계산하지 않고
+    // 실제로 적어서 제출한 내용을 그대로 가져온다 (간접적으로 반·과목 데이터에 동기화되길 기다리지 않음)
+    const existing=(store.worklog[who]||{})[d];
+    const lessons=(existing && existing.lessons && existing.lessons.length) ? existing.lessons : autoLessons(who,d);
+    lessons.forEach(L=>{
+      const lesson=L.lesson!=null?L.lesson:L.subject;
+      if(String(lesson||'').trim().toUpperCase()==='IBT') return; // IBT는 주간 진도계획표 작성 대상에서 제외
       const [p1,p2]=splitProg(L.prog);
       rows.push({date:d, cls:L.cls, book:L.book, prog:p1, test:'', hw:L.hw, mprog:p2});
     });
@@ -4510,7 +4532,7 @@ function bindWeekPlan(who, days, readOnly){
                 // 진도는 반·교재(시간표)의 진도 칸에도 매일 자동으로 반영한다
                 if(field === 'prog' && targetLesson.lesson){
                     const w=whoTeacher(who);
-                    if(w) syncProgressToClass(w.a, rCls, targetLesson.lesson, rDate.slice(0,7), val);
+                    if(w) syncProgressToClass(w.a, rCls, targetLesson.subj||targetLesson.lesson, rDate.slice(0,7), val, wdOf(rDate));
                 }
             }
         } catch(err) {
@@ -4707,25 +4729,41 @@ function yearlyPivot(a){
   return {ms:[...allMs].sort(), rows, order};
 }
 function ydKey(a,name,subj,m){ return a+'|'+name+'|'+subj+'|'+m; }
-function syncBookToClass(a,className,subject,month,value){
-  const arr=editArr(a,month); // 해당 달 자료를 편집 가능한 형태로 준비 (없으면 최초 1회 복사)
-  const c=arr.find(x=>x.name===className);
-  if(!c) return false;
-  c.subjects=c.subjects||[];
-  let s=c.subjects.find(x=>(x.subject||'-')===subject);
-  if(!s){ s={subject:subject==='-'?'':subject, book:'', teacher:'', hw:'', progress:'', note:''}; c.subjects.push(s); }
-  s.book=value;
+function classesMatchingName(a, month, className){
+  // 합반 표시용 이름("JB1,2")으로는 실제 반 목록에 정확히 일치하는 반이 없으므로,
+  // classNameCompatible로 부서 표기·번호가 겹치는 실제 반들을 전부 찾아준다 (JB1,2 → JB1과 JB2 둘 다)
+  const arr=editArr(a,month);
+  const exact=arr.filter(x=>x.name===className);
+  if(exact.length) return exact;
+  return arr.filter(x=>classNameCompatible(x.name, className));
+}
+function syncBookToClass(a,className,subject,month,value,wd){
+  const list=classesMatchingName(a, month, className); // 합반이면 관련된 반 전부에 반영
+  if(!list.length) return false;
+  const subj=String(subject||'').trim();
+  if(!subj) return false;
+  list.forEach(c=>{
+    c.subjects=c.subjects||[];
+    // 같은 과목명이 요일별로 여러 줄 등록돼 있을 수 있어(예: "수행코디"가 요일마다 각각 있는 경우),
+    // 어느 줄을 읽어오든 항상 최신값이 보이도록 이름이 같은 줄 전부에 반영한다.
+    // 일치하는 과목 줄이 아예 없으면(이름·설명을 자유롭게 고쳐 적은 경우 등) 새 과목을 만들지 않고 건너뛴다 —
+    // 안 그러면 "수업" 칸에 적은 내용(페이지 범위 등)이 매번 새 과목으로 잘못 추가돼버린다
+    const cands=c.subjects.filter(x=>String(x.subject||'-').trim()===subj);
+    cands.forEach(s=>{ s.book=value; });
+  });
   return true;
 }
-function syncProgressToClass(a,className,subject,month,value){
+function syncProgressToClass(a,className,subject,month,value,wd){
   // 업무일지·주간 진도계획표에 진도를 적으면 반·교재(시간표)의 진도 칸도 매일 자동으로 최신 상태를 따라가게 한다
-  const arr=editArr(a,month);
-  const c=arr.find(x=>x.name===className);
-  if(!c) return false;
-  c.subjects=c.subjects||[];
-  let s=c.subjects.find(x=>(x.subject||'-')===subject);
-  if(!s){ s={subject:subject==='-'?'':subject, book:'', teacher:'', hw:'', progress:'', note:''}; c.subjects.push(s); }
-  s.progress=value;
+  const list=classesMatchingName(a, month, className); // 합반이면 관련된 반 전부에 반영
+  if(!list.length) return false;
+  const subj=String(subject||'').trim();
+  if(!subj) return false;
+  list.forEach(c=>{
+    c.subjects=c.subjects||[];
+    const cands=c.subjects.filter(x=>String(x.subject||'-').trim()===subj);
+    cands.forEach(s=>{ s.progress=value; });
+  });
   return true;
 }
 function downloadMasterXlsx(aOnly){
