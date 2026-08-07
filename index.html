@@ -3074,18 +3074,29 @@ function bindConsult(){
     rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{};
     rec[k][s].done=cb.checked;
     if(cb.checked && !rec[k][s].date) rec[k][s].date=todayISO();
+    rec[k][s].updatedAt=Date.now(); // 동기화 시 이 기록이 최신인지 판단하는 기준 — 없으면 병합 과정에서 다른 기기의 빈 값에 덮일 수 있음
     await saveAndSync(); render(true);
   });
 
   v.querySelectorAll('input.dtin').forEach(d=>d.onchange= async ()=>{
     const rec=mRecords(); const k=d.dataset.k, s=d.dataset.s;
     rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].date=d.value; 
+    rec[k][s].updatedAt=Date.now();
     await saveAndSync();
   });
 
   v.querySelectorAll('textarea[data-s]').forEach(t=>t.onchange= async ()=>{
     const rec=mRecords(); const k=t.dataset.k, s=t.dataset.s;
-    rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{}; rec[k][s].memo=t.value; 
+    rec[k]=rec[k]||{}; rec[k][s]=rec[k][s]||{};
+    // 이미 적혀있던 내용을 실수로 완전히 지우려는 경우, 한 번 더 확인해서 사고로 날아가는 걸 막는다
+    const prevMemo=rec[k][s].memo||'';
+    if(prevMemo.trim().length>=3 && !t.value.trim()){
+      if(!confirm('이미 적혀있던 상담 메모("'+(prevMemo.length>30?prevMemo.slice(0,30)+'…':prevMemo)+'")를 완전히 지우시겠어요?')){
+        t.value=prevMemo; return;
+      }
+    }
+    rec[k][s].memo=t.value; 
+    rec[k][s].updatedAt=Date.now();
     await saveAndSync();
   });
 
@@ -4282,14 +4293,20 @@ function autoLessons(who, date){
 }
 function pad(arr,n,mk){ arr=arr||[]; while(arr.length<n) arr.push(mk()); return arr; }
 function weeklyPlanRowFor(who, date, cls){
-  // 주간 진도계획표에 이미 적혀있는 그 날짜·반 줄을 찾아준다 (업무일지 자동 채움 때 우선 반영하기 위함)
+  // 주간 진도계획표에 이미 적혀있는 그 날짜·반 줄을 찾아준다 (업무일지 자동 채움 때 우선 반영하기 위함).
+  // 여러 주차 자료에 같은 날짜가 겹쳐 있을 수 있어, 가장 최근에 수정된 계획표 쪽을 우선한다.
+  // 반 이름도 "JM3" ↔ "JM3,4"처럼 합반 표기가 다를 수 있어 느슨하게 한 번 더 확인한다.
   const wp=store.weekplan[who]; if(!wp) return null;
+  let best=null, bestTs=-1;
   for(const wk in wp){
     const rows=wp[wk] && wp[wk].rows; if(!rows) continue;
-    const r=rows.find(r=>r.date===date && r.cls===cls);
-    if(r) return r;
+    const r=rows.find(r=>r.date===date && r.cls===cls) || rows.find(r=>r.date===date && classNameCompatible(r.cls, cls));
+    if(r){
+      const ts=tsOf(wp[wk].updatedAt);
+      if(ts>=bestTs){ best=r; bestTs=ts; }
+    }
   }
-  return null;
+  return best;
 }
 function autoLessonsFilled(who, date){
   // 시간표 기준 기본값에, 주간 진도계획표에 이미 적어둔 진도·과제·교재가 있으면 그걸 우선 채워넣는다
@@ -4360,7 +4377,7 @@ function journalForm(who, date, readOnly){
   // 수업내용 및 진도 (자동)
   h+=`<div class="myclass" style="margin-top:16px">수업내용 및 진도 <span style="font-weight:400">— 시간표·교재·과제 자료 기반 자동 채움, 수정 가능</span>
     ${readOnly?'':'<button class="btn small" id="wlRefill" style="margin-left:8px">자료로 다시 채우기</button>'}</div>`;
-  h+=`<div style="overflow-x:auto"><table style="min-width:760px"><thead><tr><th style="width:80px">반</th><th style="width:90px">시간</th><th>교재</th><th style="width:70px">과목</th><th>수업</th><th>과제</th><th style="width:90px">진도</th><th></th></tr></thead><tbody>`;
+  h+=`<div style="overflow-x:auto"><table style="min-width:900px"><thead><tr><th style="width:80px">반</th><th style="width:90px">시간</th><th>교재</th><th style="width:70px">과목</th><th>수업</th><th>과제</th><th style="width:180px">진도</th><th></th></tr></thead><tbody>`;
   e.lessons.forEach((L,i)=>{
     const cell=(f,w2)=>`<td><input type="text" class="wl-l" data-i="${i}" data-f="${f}" value="${esc(L[f]||'')}" ${dis} style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 7px;font-family:inherit;font-size:.8rem"></td>`;
     const subjCell=`<td style="text-align:center;font-size:.78rem;color:var(--sub);font-weight:700" title="시간표에 등록된 원래 과목명 — 진도·교재가 저장될 기준이라 여기서는 고칠 수 없습니다">${esc(L.subj||L.lesson||'-')}</td>`;
