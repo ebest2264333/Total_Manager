@@ -6523,12 +6523,17 @@ function downloadWeeklyTimetableColored(onlyKey){
     const week=wtWeeks[k];
     const days=['월','화','수','목','금','토','일'].filter(d=>week.dayCols&&week.dayCols[d]&&week.dayCols[d].length);
     if(!days.length) return;
+    const allCols=[]; days.forEach(d=>week.dayCols[d].forEach(c=>allCols.push(c)));
     const blocks=[]; const seen=new Set();
     (week.entries||[]).forEach(e=>{ if(!seen.has(e.timeBlock)){ seen.add(e.timeBlock); blocks.push(e.timeBlock); } });
-    body+=`<h3 style="font-family:sans-serif">${esc(week.label||k)}</h3>`;
+    const teacherByCol=week.teacherByCol||{};
+    const hasTeacherRow=allCols.some(c=>teacherByCol[c]);
     body+=`<table border="1" style="border-collapse:collapse;font-family:sans-serif;font-size:12px" cellpadding="5">`;
+    // 제목(원본처럼 표 맨 위 한 줄로, 전체 열에 걸쳐 병합)
+    body+=`<tr><th colspan="${allCols.length+1}" style="background:#e8eaf0;font-size:14px">${esc(week.label||k)}</th></tr>`;
+    // 요일 이름(그 요일에 속한 여러 열에 걸쳐 하나로 병합 — 원본처럼)
     body+='<tr><th style="background:#f6f8fc">시간</th>';
-    days.forEach(d=>{ week.dayCols[d].forEach((c,i)=>{ body+=`<th style="background:#f6f8fc">${esc(d)}${week.dayCols[d].length>1?' '+(i+1):''}</th>`; }); });
+    days.forEach(d=>{ body+=`<th colspan="${week.dayCols[d].length}" style="background:#f6f8fc">${esc(d)}</th>`; });
     body+='</tr>';
     blocks.forEach(b=>{
       body+=`<tr><td style="font-weight:bold">${esc(String(b||'').replace(/\n+/g,' '))}</td>`;
@@ -6542,6 +6547,12 @@ function downloadWeeklyTimetableColored(onlyKey){
       });
       body+='</tr>';
     });
+    // 담당 선생님 줄(요일마다 열 하나당 한 명 — 병합하지 않고 그대로)
+    if(hasTeacherRow){
+      body+='<tr><td style="font-weight:bold">담당</td>';
+      allCols.forEach(c=>{ body+=`<td>${esc(teacherByCol[c]||'')}</td>`; });
+      body+='</tr>';
+    }
     body+='</table><br><br>';
   });
   const html=`<html><head><meta charset="UTF-8"></head><body>${body}</body></html>`;
@@ -6593,24 +6604,33 @@ function renderWeeklyTimetableTable(week){
   if(!week) return '<div style="font-size:.82rem;color:#8b93a7">자료 없음</div>';
   const days=['월','화','수','목','금','토','일'].filter(d=>week.dayCols&&week.dayCols[d]&&week.dayCols[d].length);
   if(!days.length) return '<div style="font-size:.82rem;color:#8b93a7">자료 없음</div>';
+  const allCols=[]; days.forEach(d=>week.dayCols[d].forEach(c=>allCols.push(c)));
   const blocks=[]; const seen=new Set();
   (week.entries||[]).forEach(e=>{ if(!seen.has(e.timeBlock)){ seen.add(e.timeBlock); blocks.push(e.timeBlock); } });
+  const teacherByCol=week.teacherByCol||{};
+  const hasTeacherRow=allCols.some(c=>teacherByCol[c]);
   let h=`<div style="font-size:.76rem;color:var(--sub);margin-bottom:6px">${esc(week.start||'')}${week.end?' ~ '+esc(week.end):''}</div>`;
   h+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.76rem">';
   h+='<thead><tr><th style="border:1px solid var(--line);padding:6px;background:#f6f8fc;white-space:nowrap">시간</th>';
-  days.forEach(d=>{ week.dayCols[d].forEach((c,i)=>{ h+=`<th style="border:1px solid var(--line);padding:6px;background:#f6f8fc">${esc(d)}${week.dayCols[d].length>1?' '+(i+1):''}</th>`; }); });
+  days.forEach(d=>{ h+=`<th colspan="${week.dayCols[d].length}" style="border:1px solid var(--line);padding:6px;background:#f6f8fc">${esc(d)}</th>`; });
   h+='</tr></thead><tbody>';
   blocks.forEach(b=>{
     h+=`<tr><td style="border:1px solid var(--line);padding:6px;font-weight:700;white-space:pre-line">${esc(b)}</td>`;
     days.forEach(d=>{
       week.dayCols[d].forEach(c=>{
         const es=(week.entries||[]).filter(e=>e.day===d&&e.col===c&&e.timeBlock===b);
+        const bg=(es[0]&&es[0].color)?('#'+es[0].color):'';
         const txt=es.map(e=>e.className+(e.subject?' · '+e.subject:'')).join(', ');
-        h+=`<td style="border:1px solid var(--line);padding:6px">${esc(txt)}</td>`;
+        h+=`<td style="border:1px solid var(--line);padding:6px${bg?';background:#'+bg:''}">${esc(txt)}</td>`;
       });
     });
     h+='</tr>';
   });
+  if(hasTeacherRow){
+    h+='<tr><td style="border:1px solid var(--line);padding:6px;font-weight:700">담당</td>';
+    allCols.forEach(c=>{ h+=`<td style="border:1px solid var(--line);padding:6px">${esc(teacherByCol[c]||'')}</td>`; });
+    h+='</tr>';
+  }
   h+='</tbody></table></div>';
   return h;
 }
@@ -6685,7 +6705,7 @@ function parseIconWeeklyTimetable(wb){
       const dm=label.match(/\((\d{1,2})월\s*(\d{1,2})일\s*-\s*(?:(\d{1,2})월\s*)?(\d{1,2})일\)/);
       const ym=label.match(/(\d{2,4})년/);
       const wkNumM=label.match(/(\d{1,2})주/);
-      let start='', end='';
+      let start='', end='', dispMonth=null; // dispMonth: 화면에 "◯월 N주"라고 표시할 때 쓸 기준 달(항상 시트가 말하는 달) — 실제 날짜가 다음 달로 넘어가도 "몇 주차"인지는 바뀌지 않는다
       if(dm){
         // 시트 이름에 달이 적혀있으면 그걸 기준으로 삼는다
         const labelStartMonth=+dm[1], labelEndMonth=dm[3]?+dm[3]:+dm[1];
@@ -6703,24 +6723,41 @@ function parseIconWeeklyTimetable(wb){
         else if(endMonth<startMonth) endYear=String(+year+1); // 12월→1월처럼 해를 넘기는 주
         start=year+'-'+String(startMonth).padStart(2,'0')+'-'+String(+dm[2]).padStart(2,'0');
         end=endYear+'-'+String(endMonth).padStart(2,'0')+'-'+String(+dm[4]).padStart(2,'0');
+        dispMonth=startMonth;
       } else if(wkNumM && (sheetMonth!=null || ym)){
         // 날짜 범위 없이 "26년 8월 1주"처럼 주 번호만 있는 경우 — 그 달 1일이 속한 주의 월요일부터
         // (주번호-1)*7일 뒤를 시작일로 계산한다(같은 파일의 날짜-범위가 있는 주들과 대조해 검증된 방식).
         const year=sheetMonth!=null?(snMonthMatch[1].length===2?'20'+snMonthMatch[1]:snMonthMatch[1]):(ym[1].length===2?'20'+ym[1]:ym[1]);
         const month=sheetMonth!=null?sheetMonth:+label.match(/(\d{1,2})월/)[1];
         const wkNum=+wkNumM[1];
-        const m1=mondayOnOrBefore(+year, month, 1);
+        let m1=mondayOnOrBefore(+year, month, 1);
+        if(m1.getUTCMonth()+1!==+month) m1=new Date(m1.getTime()+7*86400000); // 그 달 1일 이전으로 걸치는 월요일이면, 실제로 그 달 안에 있는 첫 월요일을 "1주"로 삼는다
         const s=new Date(m1); s.setUTCDate(s.getUTCDate()+(wkNum-1)*7);
         const e=new Date(s); e.setUTCDate(e.getUTCDate()+6);
         start=fmtDate(s); end=fmtDate(e);
+        dispMonth=month; // 실제 요일이 이전 달로 걸쳐도(예: 7/27 시작) "8월 1주"라고 표시
       }
       // 시간대별 행 스캔(다음 주 블록이 시작되기 전까지)
       const entries=[];
+      const teacherByCol={}; // 요일 칸 맨 아래에 있는 "OO T"식 담당 선생님 줄(시간대와 무관, 열 하나당 한 명)
       let rr=dayRow+1, prevLabel=null;
       while(rr<=maxR){
         const b=String(cellVal(rr,labelCol)||'').trim();
         if(/\d주/.test(b)) break;
-        if(!b){ rr++; prevLabel=null; continue; }
+        if(!b){
+          // 라벨 없는 줄 — 시간대 이름이 아니라 요일별 담당 선생님을 적어둔 줄일 수 있다(주 맨 아래, "수진T"/"명원T"처럼 이름+T)
+          let hits=0, total=0; const rowVals={};
+          for(const day in dayCols){
+            dayCols[day].forEach(c=>{
+              const cell=String(cellVal(rr,c)||'').trim();
+              if(!cell) return;
+              total++; rowVals[c]=cell;
+              if(/T$/.test(cell) && !/\n/.test(cell) && cell.length<=8) hits++;
+            });
+          }
+          if(total>=3 && hits/total>=0.6) Object.assign(teacherByCol, rowVals);
+          rr++; prevLabel=null; continue;
+        }
         if(b===prevLabel){ rr++; continue; } // 같은 시간대 블록이 여러 줄에 걸쳐 병합된 경우 — 첫 줄만 처리
         prevLabel=b;
         for(const day in dayCols){
@@ -6741,9 +6778,10 @@ function parseIconWeeklyTimetable(wb){
       let dispLabel=label;
       if(start&&end){
         const sMo=+start.slice(5,7), sDa=+start.slice(8,10), eMo=+end.slice(5,7), eDa=+end.slice(8,10);
-        dispLabel=`${sMo}월${wkNumM?' '+wkNumM[1]+'주':''}(${sMo}월 ${sDa}일 - ${eMo}월 ${eDa}일)`;
+        const mo=dispMonth||sMo; // "N월 M주"의 N은 시트가 말하는 달 기준(실제 날짜가 전달로 걸쳐도 유지)
+        dispLabel=`${mo}월${wkNumM?' '+wkNumM[1]+'주':''}(${sMo}월 ${sDa}일 - ${eMo}월 ${eDa}일)`;
       }
-      weeks[weekKey]={label:dispLabel, origLabel:label, start, end, dayCols, entries, sourceSheet:sn, sheetMonth, updatedAt:Date.now()};
+      weeks[weekKey]={label:dispLabel, origLabel:label, start, end, dayCols, entries, teacherByCol, sourceSheet:sn, sheetMonth, updatedAt:Date.now()};
       sheetWeeks++;
     }
     if(sheetWeeks) sheets.push(sn+' ('+sheetWeeks+'주)');
