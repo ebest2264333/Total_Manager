@@ -800,6 +800,52 @@ function editArr(a,m){
   return store.uploads[key];
 }
 function findClassById(a,m,id){ return editArr(a,m).find(x=>x._id===id); }
+// "정규 2\n\n4시 45분\n-6시 45분"처럼 시간대 이름 안에 적힌 "N시 M분" 두 개(시작~끝)를 뽑아 "4:45~6:45" 형식으로 만든다
+function parseTimeBlockRange(text){
+  const t=String(text||'');
+  const matches=[...t.matchAll(/(\d{1,2})시\s*(\d{1,2})?분?/g)];
+  if(matches.length<2) return '';
+  const fmt=m=>`${+m[1]}:${String(+(m[2]||0)).padStart(2,'0')}`;
+  return fmt(matches[0])+'~'+fmt(matches[matches.length-1]);
+}
+// 아이콘 주별 시간표(store.weeklyTimetable.icon)에서 이 반과 이름이 같은 줄을 찾아 비어있는 요일·시간·담당 칸만 채운다
+function autofillClassFromWeeklyTimetable(a,m,id){
+  if(a!=='icon'){ alert('아이콘 반에서만 쓸 수 있는 기능입니다.'); return; }
+  const c=findClassById(a,m,id); if(!c) return;
+  if(!c.subjects||!c.subjects.length){ alert('먼저 과목 칸을 추가한 뒤(과목명 입력) 다시 눌러주세요 — 과목명으로 시간표와 짝을 맞춥니다.'); return; }
+  const wtWeeks=(store.weeklyTimetable&&store.weeklyTimetable.icon)||{};
+  const keys=Object.keys(wtWeeks).filter(k=>wtWeeks[k]).sort();
+  if(!keys.length){ alert('업로드된 주별 시간표가 없습니다. 설정 > 아이콘 주별 시간표에서 먼저 업로드해주세요.'); return; }
+  // 이 반이 속한 달(m) 안에 있는 주 중 가장 최근 주를 쓰고, 그 달에 해당하는 주가 없으면 전체 중 가장 최근 주를 쓴다
+  const inMonth=keys.filter(k=>k.slice(0,7)===m);
+  const weekKey=inMonth.length?inMonth[inMonth.length-1]:keys[keys.length-1];
+  const week=wtWeeks[weekKey];
+  const nm=String(c.name||'').trim().toLowerCase();
+  const matched=(week.entries||[]).filter(e=>String(e.className||'').trim().toLowerCase()===nm);
+  if(!matched.length){ alert(`「${c.name}」와 이름이 같은 반을 ${week.label||weekKey} 시간표에서 찾지 못했습니다. (반 이름 표기가 시간표 파일과 정확히 같아야 인식됩니다)`); return; }
+  // 같은 과목·시간대가 요일마다 한 줄씩 중복 등장하므로 하나로 합친다
+  const bySubjTime={};
+  matched.forEach(e=>{
+    const key=(e.subject||'')+'|'+(e.timeBlock||'');
+    if(!bySubjTime[key]) bySubjTime[key]={subject:e.subject||'', timeBlock:e.timeBlock||'', daysStr:e.daysStr||'', col:e.col};
+  });
+  const records=Object.values(bySubjTime);
+  let filled=0;
+  c.subjects.forEach(s=>{
+    if(!s.subject) return; // 과목 칸이 비어있으면 시간표의 어느 줄과 짝지을지 알 수 없어 건너뜀(잘못 채우는 것을 막기 위함)
+    const rec=records.find(r=>r.subject.trim().toLowerCase()===s.subject.trim().toLowerCase());
+    if(!rec) return;
+    let touched=false;
+    if(!s.day && rec.daysStr){ s.day=rec.daysStr.replace(/[()]/g,'').trim(); touched=true; }
+    if(!s.time){ const range=parseTimeBlockRange(rec.timeBlock); if(range){ s.time=range; touched=true; } }
+    if(!s.teacher && rec.col!=null && week.teacherByCol && week.teacherByCol[rec.col]){ s.teacher=week.teacherByCol[rec.col]; touched=true; }
+    if(touched) filled++;
+  });
+  if(!filled){ alert('이미 다 채워져 있거나, 과목명이 시간표와 일치하는 줄을 찾지 못했습니다.'); return; }
+  c.updatedAt=Date.now();
+  save(); render(true);
+  alert(`${week.label||weekKey} 시간표 기준으로 ${filled}개 과목의 빈 칸(요일·시간·담당)을 채웠습니다.`);
+}
 function uniqueClassName(a,m,base){
   const arr=editArr(a,m); let n=base, i=1;
   while(arr.some(x=>x.name===n)){ i++; n=base+' '+i; }
@@ -937,16 +983,17 @@ function bookGiveBadge(c, s){
   if(!done) return '';
   return ` <span style="font-size:.66rem;font-weight:800;color:${done===total?'var(--ok)':'var(--warn)'};background:${done===total?'#e6f6ef':'#fdf3e3'};border-radius:6px;padding:1px 5px;margin-left:3px">\uD83D\uDCE6 ${done}/${total}</span>`;
 }
-const TIME_SLOTS=['1:40','2:20','3:00','3:40','4:20','4:25','5:05','5:20','6:00','6:05','6:45','7:25','7:40','8:20','9:00','9:40','10:00'];
+const TIME_SLOTS=['1:40','2:20','3:00','3:40','4:20','4:25','5:05','5:20','6:00','6:05','6:45','7:25','7:40','8:20','9:00','9:40','10:00']; // 이베스트
+const ICON_TIME_SLOTS=['3:00','4:45','5:00','6:30','6:45','8:15','8:30','9:45']; // 아이콘 실제 시간표(정규1~4, 시험시간)에서 뽑아낸 시각들
 
-function timeSlotOptions(val){
+function timeSlotOptions(val, academy){
   // 혹시 데이터에 공백이 있거나 "03:00" 처럼 0이 붙어있을 경우를 대비한 방어 로직
   let safeVal = String(val || '').trim();
   if (safeVal.startsWith('0')) {
       safeVal = safeVal.substring(1); // "03:00" -> "3:00"
   }
-
-  return `<option value="">--</option>` + TIME_SLOTS.map(t => {
+  const slots = academy==='icon' ? ICON_TIME_SLOTS : TIME_SLOTS;
+  return `<option value="">--</option>` + slots.map(t => {
     // 텍스트가 정확히 일치할 때만 selected 처리
     return `<option value="${t}" ${safeVal === t ? 'selected' : ''}>${t}</option>`;
   }).join('');
@@ -1560,6 +1607,7 @@ function classCard(c, admin, dayFilter, dupCount){
       </div>`;
     })()}
     <div style="font-size:.72rem;color:#8b93a7;margin-bottom:8px">🕒 반 기본 시간은 아래 과목표의 "시간" 칸에 요일별로 입력하시면 자동으로 등원~하원 범위가 계산됩니다. (예: RC는 화·목 3시, GR은 화·목 4시처럼 과목마다 요일별로 다른 시간 지정 가능)</div>
+    ${c.academy==='icon'?`<div style="margin-bottom:8px"><button class="btn small" data-wtautofill ${attrs} style="background:#eef4ff">🕒 주별 시간표에서 자동 채우기</button> <span style="font-size:.7rem;color:#8b93a7">과목명이 업로드한 시간표와 같아야 인식되고, 이미 채워진 요일·시간·담당 칸은 그대로 둡니다</span></div>`:''}
     <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:4px">학생 명단</div>
     <div class="students" style="margin-bottom:6px">
       ${(c.students||[]).map((s,i)=>`<span class="stu">${esc(studentDisplayName(c.academy,s,c.name))} <b data-rmstu="${i}" ${attrs} style="cursor:pointer;color:#c0392b;margin-left:3px">×</b></span>`).join('')}
@@ -1578,7 +1626,7 @@ function classCard(c, admin, dayFilter, dupCount){
       return `<tr>
       <td><input value="${esc(s.subject||'')}" data-sfield="${i}|subject" ${attrs} style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 6px;font-family:inherit;font-size:.82rem"></td>
       <td><input value="${esc(s.day||'')}" data-sfield="${i}|day" ${attrs} placeholder="전체" title="비우면 전체 요일, 예: 화,목 / 월,수,금" style="width:64px;border:1px solid var(--line);border-radius:6px;padding:5px 4px;font-family:inherit;font-size:.8rem"></td>
-      <td style="white-space:nowrap"><select data-stime="${i}|s" ${attrs} title="비우면 반 기본 시간 사용" style="width:62px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(stStr)}</select>~<select data-stime="${i}|e" ${attrs} style="width:62px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(enStr)}</select></td>
+      <td style="white-space:nowrap"><select data-stime="${i}|s" ${attrs} title="비우면 반 기본 시간 사용" style="width:62px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(stStr,c.academy)}</select>~<select data-stime="${i}|e" ${attrs} style="width:62px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(enStr,c.academy)}</select></td>
       <td><input value="${esc(s.room||'')}" data-sfield="${i}|room" ${attrs} placeholder="호실" style="width:52px;border:1px solid var(--line);border-radius:6px;padding:5px 4px;font-family:inherit;font-size:.8rem"></td>
       <td><input value="${esc(s.teacher||'')}" data-sfield="${i}|teacher" ${attrs} list="dl_teachers_${c.academy}" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 6px;font-family:inherit;font-size:.82rem"></td>
       <td><input value="${esc(s.book||'')}" data-sfield="${i}|book" ${attrs} list="${bkListId}" placeholder="${bkOpts.length?'이전 교재 선택 또는 새로 입력':'새 교재 입력'}" style="width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 6px;font-family:inherit;font-size:.82rem">
@@ -1661,7 +1709,7 @@ function renderTimetableBulk(){
           <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8;white-space:nowrap">${MODE==='all'?bdg(a)+' ':''}<b>${esc(c.name)}</b></td>
           <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="subject" value="${esc(s.subject||'')}" style="width:90px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
           <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="day" value="${esc(s.day||'')}" placeholder="예: 월,수" style="width:80px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
-          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8;white-space:nowrap"><select class="bulk-time" data-part="s" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(bStStr)}</select>~<select class="bulk-time" data-part="e" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(bEnStr)}</select></td>
+          <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8;white-space:nowrap"><select class="bulk-time" data-part="s" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(bStStr,a)}</select>~<select class="bulk-time" data-part="e" style="width:56px;border:1px solid var(--line);border-radius:6px;padding:4px 2px;font-family:inherit;font-size:.74rem">${timeSlotOptions(bEnStr,a)}</select></td>
           <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="room" value="${esc(s.room||'')}" placeholder="호실" style="width:46px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
           <td style="padding:5px 8px;border-bottom:1px solid #f1f3f8"><input type="text" class="bulk-f" data-f="teacher" value="${esc(s.teacher||'')}" style="width:70px;border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-family:inherit;font-size:.8rem"></td>
         </tr>`;
@@ -1842,6 +1890,9 @@ function bindClassEdit(){
   });
   v.querySelectorAll('[data-cfield]').forEach(el=>el.onchange=()=>{
     updateClassField(el.dataset.a,el.dataset.src,el.dataset.id,el.dataset.cfield,el.value);
+  });
+  v.querySelectorAll('[data-wtautofill]').forEach(b=>b.onclick=()=>{
+    autofillClassFromWeeklyTimetable(b.dataset.a,b.dataset.src,b.dataset.id);
   });
   v.querySelectorAll('[data-addstu]').forEach(b=>b.onclick=()=>{
     const inp=v.querySelector(`[data-addstu-in][data-id="${CSS.escape(b.dataset.id)}"]`);
@@ -6536,7 +6587,7 @@ function downloadWeeklyTimetableColored(onlyKey){
     days.forEach(d=>{ body+=`<th colspan="${week.dayCols[d].length}" style="background:#f6f8fc">${esc(d)}</th>`; });
     body+='</tr>';
     blocks.forEach(b=>{
-      body+=`<tr><td style="font-weight:bold">${esc(String(b||'').replace(/\n+/g,' '))}</td>`;
+      body+=`<tr style="height:30pt"><td style="font-weight:bold">${esc(String(b||'').replace(/\n+/g,' '))}</td>`;
       days.forEach(d=>{
         week.dayCols[d].forEach(c=>{
           const es=(week.entries||[]).filter(e=>e.day===d&&e.col===c&&e.timeBlock===b);
