@@ -900,7 +900,7 @@ const todayISO = ()=>{ const kst=new Date(Date.now()+9*60*60*1000); return kst.t
 function kstTimestamp(){ const kst=new Date(Date.now()+9*60*60*1000); return kst.toISOString().slice(0,16).replace('T',' '); } // "YYYY-MM-DD HH:MM" 형태, 항상 KST 기준
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } // Date 객체를 (그 객체가 나타내는 지역 날짜 그대로) "YYYY-MM-DD"로 — toISOString()은 UTC로 변환하면서 하루가 밀릴 수 있어 쓰지 않는다
 const LASTTAB_KEY='academy-dash-lasttab-'+MODE;
-let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:(allDataMonths().slice(-1)[0]||'2026-07'), tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
+let state = {tab:(localStorage.getItem(LASTTAB_KEY)||'today'), sub:'class', todayOpen:{}, ac: MODE==='all'?'all':MODE, dept:'all', q:'', month:todayISO().slice(0,7) /* [수정] 예전엔 "자료가 있는 가장 최근 달"을 기본값으로 써서, 이번 달 자료가 아직 안 올라와 있으면 화면을 열 때마다 지난달로 돌아가버렸다 — 이제 실제 오늘 날짜의 달을 기본으로 연다 */, tf:null, date:todayISO(), myOnly:true, classOpen:{}, ttDay:null, ttView:null, rosterOpen:{}, rosterView:null, rosterClass:null, rosterStatus:null};
 
 /* ---------- 로그인 ---------- */
 function isMgr(){ const lt=loginTeacher(); return !!(lt && lt.t.role==='실장'); }
@@ -993,7 +993,7 @@ function refreshLoginSel(){
   else dot.style.display='none';
   // ④ 선생님에게 월 선택 숨김 (상담 등은 이번 달 기준으로 자동)
   msel.style.display = lt? 'none':'';
-  if(lt) state.month = allDataMonths().slice(-1)[0]||state.month;
+  if(lt) state.month = todayISO().slice(0,7); // [수정] 선생님 로그인 때도 '자료 있는 가장 최근 달'이 아니라 실제 오늘 날짜의 달을 기본으로 연다
 }
 function mountLogin(){
   const w=document.getElementById('loginwrap');
@@ -6281,12 +6281,19 @@ function renderSet(){
     const wtToday=todayISO();
     const wtCur=wtKeys.find(k=>{ const w=wtWeeks[k]; return w.start&&w.end&&wtToday>=w.start&&wtToday<=w.end; })||wtKeys[wtKeys.length-1]||'';
     h+=`<div class="setsec" style="border:2px solid #6366f1"><h3>📅 아이콘 주별 시간표 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">(자동 인식 ${wtKeys.length}주)</span></h3>
-      <div class="desc">아이콘 원본 시간표 엑셀(「(26)N월|시간표」 시트)을 위 「엑셀 파일 업로드」로 올리면, 주마다 바뀌는 반·시간을 주 단위로 자동 인식해서 저장합니다. 토·일요일 특강 주도 함께 인식됩니다. 이베스트 자료에는 전혀 영향을 주지 않습니다.</div>
-      ${wtKeys.length?`<select id="wtWeekSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;margin-bottom:10px">
+      <div class="desc">아이콘 원본 시간표 엑셀(「시간표」가 들어간 시트)을 올리면, 주마다 바뀌는 반·시간을 주 단위로 자동 인식해서 저장합니다. 한 주치만 담긴 파일이든 여러 달치가 담긴 파일이든 그 안에 있는 주만 각각 따로 저장·갱신되고, 이미 저장된 다른 주는 그대로 남습니다 — 매주 그 주 파일만 새로 올려도 됩니다. 토·일요일 특강 주도 함께 인식됩니다. 이베스트 자료에는 전혀 영향을 주지 않습니다.</div>
+      <div class="cbtns" style="margin-bottom:10px"><button class="btn primary" id="wtUpBtn">📤 주별 시간표 업로드</button><input type="file" id="wtUpFile" accept=".xlsx,.xls" style="display:none"></div>
+      ${wtKeys.length?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <select id="wtWeekSel" style="padding:7px 9px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
         ${wtKeys.map(k=>`<option value="${esc(k)}" ${k===wtCur?'selected':''}>${k===wtCur?'📍 ':''}${esc(wtWeeks[k].label||k)}</option>`).join('')}
-      </select>
+        </select>
+        <button class="btn small" id="wtWeekDl">⬇ 이 주 다운로드</button>
+        <button class="btn small" style="color:#c0392b;border-color:#e7b3ab" id="wtWeekDel">🗑 이 주 삭제</button>
+        <span style="flex:1"></span>
+        <button class="btn small" id="wtAllDl">⬇ 전체 주 다운로드 (${wtKeys.length}주)</button>
+      </div>
       <div id="wtWeekView">${renderWeeklyTimetableTable(wtWeeks[wtCur])}</div>`
-      :'<div style="font-size:.82rem;color:#8b93a7">아직 인식된 주별 시간표가 없습니다. 위 「엑셀 파일 업로드」로 아이콘 원본 시간표 파일을 올려주세요.</div>'}
+      :'<div style="font-size:.82rem;color:#8b93a7">아직 인식된 주별 시간표가 없습니다. 위 「📤 주별 시간표 업로드」로 아이콘 원본 시간표 파일을 올려주세요.</div>'}
     </div>`;
   }
   // 선생님 (관리자·실장만 편집 가능, 일반 선생님은 이름·색상만 조회)
@@ -6504,6 +6511,46 @@ function parseWorkbook(wb){
 // 인덱스는 시트마다 실제 사용범위 시작 열이 달라(A열부터인 시트도, B열부터인 시트도 있음) 그대로 쓰면 열이 밀려버린다.
 // ⚠ 이 함수와 그 결과(store.weeklyTimetable.icon)는 아이콘 전용이며 이베스트 자료와 절대 섞이지 않는다.
 // 주별 시간표 한 주 분량을 표로 그려준다 — parseIconWeeklyTimetable()이 뽑아낸 결과를 그대로 사용
+// 주별 시간표를 엑셀로 다운로드 — onlyKey를 주면 그 주만, 안 주면 저장된 모든 주를 각 시트로 담는다
+function downloadWeeklyTimetableXlsx(onlyKey){
+  const wtWeeks=(store.weeklyTimetable&&store.weeklyTimetable.icon)||{};
+  const keys=onlyKey?[onlyKey]:Object.keys(wtWeeks).sort();
+  if(!keys.length || !keys.some(k=>wtWeeks[k])){ alert('다운로드할 주별 시간표가 없습니다.'); return; }
+  const wb=XLSX.utils.book_new();
+  const usedNames=new Set();
+  keys.forEach(k=>{
+    const week=wtWeeks[k]; if(!week) return;
+    const days=['월','화','수','목','금','토','일'].filter(d=>week.dayCols&&week.dayCols[d]&&week.dayCols[d].length);
+    if(!days.length) return;
+    const blocks=[]; const seen=new Set();
+    (week.entries||[]).forEach(e=>{ if(!seen.has(e.timeBlock)){ seen.add(e.timeBlock); blocks.push(e.timeBlock); } });
+    const header=['시간'];
+    days.forEach(d=>{ week.dayCols[d].forEach((c,i)=>{ header.push(d+(week.dayCols[d].length>1?' '+(i+1):'')); }); });
+    const aoa=[[week.label||k],['기간: '+(week.start||'')+' ~ '+(week.end||'')],[''],header];
+    blocks.forEach(b=>{
+      const row=[String(b||'').replace(/\n+/g,' ')];
+      days.forEach(d=>{
+        week.dayCols[d].forEach(c=>{
+          const es=(week.entries||[]).filter(e=>e.day===d&&e.col===c&&e.timeBlock===b);
+          row.push(es.map(e=>e.className+(e.subject?' · '+e.subject:'')).join(', '));
+        });
+      });
+      aoa.push(row);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=[{wch:18}, ...header.slice(1).map(()=>({wch:16}))];
+    let name=(week.start||k).replace(/[:\\\/\?\*\[\]]/g,'').slice(0,28)||'week';
+    let uniq=name, n2=1; while(usedNames.has(uniq)){ uniq=name.slice(0,26)+'_'+n2; n2++; }
+    usedNames.add(uniq);
+    XLSX.utils.book_append_sheet(wb, ws, uniq);
+  });
+  if(!wb.SheetNames.length){ alert('다운로드할 주별 시간표가 없습니다.'); return; }
+  const out=XLSX.write(wb,{type:'array',bookType:'xlsx'});
+  const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const u=URL.createObjectURL(blob); const el=document.createElement('a');
+  el.href=u; el.download='아이콘_주별시간표_'+(onlyKey||'전체')+'_'+todayISO()+'.xlsx'; el.click(); URL.revokeObjectURL(u);
+}
+
 function renderWeeklyTimetableTable(week){
   if(!week) return '<div style="font-size:.82rem;color:#8b93a7">자료 없음</div>';
   const days=['월','화','수','목','금','토','일'].filter(d=>week.dayCols&&week.dayCols[d]&&week.dayCols[d].length);
@@ -6568,7 +6615,8 @@ function parseIconWeeklyTimetable(wb){
       const dayCols={};
       for(let c=labelCol+1;c<=maxC;c++){
         const dv=String(cellVal(dayRow,c)||'').trim();
-        if(['월','화','수','목','금','토','일'].includes(dv)){ (dayCols[dv]=dayCols[dv]||[]).push(c); }
+        const dvDay=(dv.match(/^(월|화|수|목|금|토|일)/)||[])[1]; // "월" 뿐 아니라 "월(20)"처럼 날짜가 붙은 형식도 인식
+        if(dvDay){ (dayCols[dvDay]=dayCols[dvDay]||[]).push(c); }
       }
       if(!Object.keys(dayCols).length) continue; // 요일 줄을 못 찾은 블록(형식이 다른 경우)은 건너뜀
       // 날짜 범위 추출: "26년 4월 1주(3월 30일 - 5월 1일)" 형식
@@ -6626,6 +6674,35 @@ function bindSet(){
   if(wtSel) wtSel.onchange=()=>{
     const wk=((store.weeklyTimetable&&store.weeklyTimetable.icon)||{})[wtSel.value];
     const box=v.querySelector('#wtWeekView'); if(box) box.innerHTML=renderWeeklyTimetableTable(wk);
+  };
+  const wtUpBtn=v.querySelector('#wtUpBtn'), wtUpFile=v.querySelector('#wtUpFile');
+  if(wtUpBtn) wtUpBtn.onclick=()=>wtUpFile.click();
+  if(wtUpFile) wtUpFile.onchange=()=>{
+    const f=wtUpFile.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload=()=>{ try{
+      const wb=XLSX.read(new Uint8Array(r.result),{type:'array'});
+      const {weeks, sheets}=parseIconWeeklyTimetable(wb);
+      const wkKeys=Object.keys(weeks);
+      if(!wkKeys.length){ alert('이 파일에서 시간표를 찾지 못했습니다.\n시트 이름에 「시간표」가 들어있고, 그 안에 「◯월 ◯주(◯월 ◯일 - ◯월 ◯일)」 형식의 주 구분이 있어야 인식됩니다.'); return; }
+      store.weeklyTimetable.icon=store.weeklyTimetable.icon||{};
+      wkKeys.forEach(k=>{ store.weeklyTimetable.icon[k]=weeks[k]; });
+      save(); render(true);
+      alert(`주별 시간표 ${wkKeys.length}주 반영 완료!\n`+wkKeys.map(k=>'· '+(weeks[k].label||k)).join('\n'));
+    }catch(e){ alert('엑셀 파일을 읽지 못했습니다: '+e.message); } };
+    r.readAsArrayBuffer(f);
+  };
+  const wtWeekDl=v.querySelector('#wtWeekDl');
+  if(wtWeekDl) wtWeekDl.onclick=()=>{ const k=wtSel?wtSel.value:null; if(k) downloadWeeklyTimetableXlsx(k); };
+  const wtAllDl=v.querySelector('#wtAllDl');
+  if(wtAllDl) wtAllDl.onclick=()=>downloadWeeklyTimetableXlsx();
+  const wtWeekDel=v.querySelector('#wtWeekDel');
+  if(wtWeekDel) wtWeekDel.onclick=()=>{
+    const wtWeeksNow=(store.weeklyTimetable&&store.weeklyTimetable.icon)||{};
+    const k=wtSel?wtSel.value:null; if(!k||!wtWeeksNow[k]) return;
+    if(!confirm(`「${wtWeeksNow[k].label||k}」 이 주 시간표를 삭제할까요?`)) return;
+    delete store.weeklyTimetable.icon[k];
+    save(); render(true);
   };
   const backfillBtn=v.querySelector('#backfillStudentsBtn');
   if(backfillBtn) backfillBtn.onclick=()=>{
