@@ -415,7 +415,9 @@ if(!store.wordTests) store.wordTests=[];
 if(!store.sharedAt) store.sharedAt=0;
 if(!store.inboxDone) store.inboxDone={};
 if(!store.boardPosts) store.boardPosts=[]; // 게시판(오류 제보·1:1 문의·공지) — {id, kind:'issue'|'ask'|'notice', title, body, authorName, authorAcademy, private, createdAt, replies:[{body,authorName,createdAt}], resolved}
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts'];
+if(!store.syllabus) store.syllabus=[]; // 실러버스(교재별 진도표) — {id, title, book, dept, course, academy, sheets:[{name,html}], uploadedBy, uploadedAt} · 모든 선생님 열람, 실장 이상만 업로드/삭제
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','syllabus'];
+if(!store.syllabusSeeded && store.syllabus.length===0){ store.syllabus=[{"id": "seedsyl001", "title": "Spider Phonics Syllabus", "dept": "초등", "sheets": [{"name": "Phonic 1 Yellow", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-YELLOW (3 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>달러파티 영상, OT: A~Z</td><td>&nbsp;</td><td>2-5</td><td>2025-02-05</td></tr><tr><td>Day 2</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>6-7</td><td>2025-08-09</td></tr><tr><td>Day 3</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>10-13</td><td>14-15, B/V 단어시험 공부</td></tr><tr><td>Day 4</td><td>Unit 2. P,F</td><td>B/V 시험</td><td>16-17</td><td>18-19</td></tr><tr><td>Day 5</td><td>Unit 2. P,F</td><td>&nbsp;</td><td>20-23</td><td>24-25, P/F 단어시험 공부</td></tr><tr><td>Day 6</td><td>Unit 3. L,R</td><td>P/F 시험</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3. L,R</td><td>&nbsp;</td><td>30-33</td><td>34-35, L/R 단어시험 공부</td></tr><tr><td>Day 8</td><td>Unit 4. J,Z</td><td>L/R 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4. J,Z</td><td>&nbsp;</td><td>40-43</td><td>44-45, J/Z 단어시험 공부</td></tr><tr><td>Day 10</td><td>Unit 5. D,T</td><td>J/Z 시험</td><td>46-47</td><td>48-49</td></tr><tr><td>Day 11</td><td>Unit 5. D,T</td><td>&nbsp;</td><td>50-53</td><td>54-55, D/T 시험공부 <br>알파벳 시험공부</td></tr><tr><td>Day 12</td><td>Review</td><td>D/T 시험</td><td>Review</td><td>&nbsp;</td></tr></table>"}, {"name": "Phonic 1 Pink", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-PINK (2 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>56-57</td><td>58-59</td></tr><tr><td>Day 2</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>60-63</td><td>64-65, S,X 시험준비</td></tr><tr><td>Day 3</td><td>Unit 7. M,N,G</td><td>S,X 시험</td><td>66-67</td><td>68-69</td></tr><tr><td>Day 4</td><td>Unit 7. M,N,G</td><td>&nbsp;</td><td>70-73</td><td>74-75, M,N,G 시험준비</td></tr><tr><td>Day 5</td><td>Unit 8. C,K,Q</td><td>M,N,G 시험</td><td>76-77</td><td>78-79</td></tr><tr><td>Day 6</td><td>Unit 8. C,K,Q</td><td>&nbsp;</td><td>80-83</td><td>84-85, C,K,Q 시험준비</td></tr><tr><td>Day 7</td><td>Unit 9. W,Y,H</td><td>C,K,Q 시험</td><td>86-87</td><td>88-89</td></tr><tr><td>Day 8</td><td>Unit 9. W,Y,H</td><td>&nbsp;</td><td>90-93</td><td>94-95</td></tr></table>"}, {"name": "Phonic 2 Green", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 2 - Green Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(short A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(short A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (short I)</td><td>Unit 1 <br>short A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (short I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 조합판</td><td>Unit 2 <br>Short I 시험</td><td>92, 94</td><td>93, 95</td></tr><tr><td>Day 6</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Short O)</td><td>Unit 3<br>Short U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Short O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 조합판</td><td>Unit 4<br>Short O 시험</td><td>96,98</td><td>97,99</td></tr><tr><td>Day 11</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (ar, or)</td><td>Unit 5 <br>Short E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (ar, or)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 조합판</td><td>Unit 6  <br>ar, or 시험</td><td>100</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (er, ir, ur)</td><td>Unit 7 <br>aw, au 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (er, ir, ur)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 review</td><td>Unit 8 <br>er, ir, ur 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 3 Blue", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 3 - Blue Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(Long A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(Long A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (Long I)</td><td>Unit 1 <br>Long A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (Long I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 Story, 발표 촬영</td><td>Unit 2 <br>Long I 시험</td><td>24-25</td><td>p93,95</td></tr><tr><td>Day 6</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Long O)</td><td>Unit 3<br>Long U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Long O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 Story, 발표 촬영</td><td>Unit 4<br>Long O 시험</td><td>46-47</td><td>96,98</td></tr><tr><td>Day 11</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (oi, oy)</td><td>Unit 5 <br>Long E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (oi, oy)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 Story, 발표촬영</td><td>Unit 6  <br>oi, oy 시험</td><td>68-69</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (oo, ew)</td><td>Unit 7 <br>ou, ow 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (oo, ew)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 Story, 발표촬영</td><td>Unit 8 <br>oo, ew 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 4 Purple", "html": "<table class=\"ytable\"><tr><td style=\"font-weight:800;background:#f4f6fb\">&nbsp;</td><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 4 - Purple Book</td></tr><tr><td>Co-T</td><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"8\">2 days a week</td><td>Day 1</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>2-3</td><td>2025-04-05</td></tr><tr><td>Day 2</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>6-9</td><td>10-11, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (cl, gl, sl)</td><td>Unit 1 <br>bl, pl, fl 단어시험</td><td>12-13</td><td>14-15</td></tr><tr><td>Day 4</td><td>Unit 2 (cl, gl, sl)</td><td>&nbsp;</td><td>16-19</td><td>20-21, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 3 (br, cr, dr)</td><td>Unit 2 <br>cl, gl, sl 시험</td><td>22-23</td><td>24-25</td></tr><tr><td>Day 6</td><td>Unit 3 (br, cr, dr)</td><td>&nbsp;</td><td>26-29</td><td>30-31, Unit 3 시험공부</td></tr><tr><td>Day 7</td><td>Unit 4 (sm, sn, sw)</td><td>Unit 3 <br>br, cr, dr 시험</td><td>32-33</td><td>34-35</td></tr><tr><td>Day 8</td><td>Unit 4 (sm, sn, sw)</td><td>&nbsp;</td><td>36-39</td><td>40-41, Unit 4 시험공부</td></tr><tr><td rowspan=\"12\">3 days a week</td><td>Day 1</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>42-43</td><td>44-45</td></tr><tr><td>Day 2</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>46-49</td><td>50-51, Unit 5 시험공부</td></tr><tr><td>Day 3</td><td>Unit 6 (gh, ph, wh)</td><td>Unit 5 <br>nk, ng, nt 시험</td><td>52-53</td><td>54-55</td></tr><tr><td>Day 4</td><td>Unit 6 (gh, ph, wh)</td><td>&nbsp;</td><td>56-59</td><td>60-61, Unit 6 시험공부</td></tr><tr><td>Day 5</td><td>Unit 7 (ch, sh, th)</td><td>Unit 6 <br>gh, ph, wh 시험</td><td>62-63</td><td>64-65</td></tr><tr><td>Day 6</td><td>Unit 7 (ch, sh, th)</td><td>&nbsp;</td><td>66-69</td><td>70-71, Unit 7 시험공부</td></tr><tr><td>Day 7</td><td>Unit 8 (st, ft, lt)</td><td>Unit 7 <br>ch, sh, th 시험</td><td>72-73</td><td>74-75</td></tr><tr><td>Day 8</td><td>Unit 8 (st, ft, lt)</td><td>&nbsp;</td><td>76-79</td><td>80-81, Unit 8 시험공부</td></tr><tr><td>Day 9</td><td>Unit 9 <br>(Classroom English-TPR)</td><td>Unit 8 <br>st, ft, lt 시험</td><td>82-83 </td><td>82-83 복습</td></tr><tr><td>Day 10</td><td>Unit 9 <br>(Classroom English<br>-Script 작성)</td><td>&nbsp;</td><td>84-85</td><td>Script 암기</td></tr><tr><td>Day 11</td><td>Classroom English Script 발표</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 12</td><td>Review Game</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055159409, "course": "파닉스"}, {"id": "seedsyl002", "title": "English Chest 2 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 2 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-42</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-46</td><td>WB: 28-29</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 2</td><td>47-48</td><td>WB: 30-31</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 2 / Lesson 4</td><td>56-57</td><td>WB: 36-37</td></tr><tr><td>Day 10</td><td>Unit 2 / Lesson 4</td><td>58-60</td><td>WB: 38-39</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 1</td><td>64-67</td><td>WB: 42-45</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>70-74</td><td>WB: 46-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055160409, "course": "리딩"}, {"id": "seedsyl003", "title": "English Chest 1 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 1 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-41</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-47</td><td>WB: 28-31</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 4</td><td>56-59</td><td>WB: 36-39</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 3 / Lesson 1</td><td>64-66</td><td>WB: 42-43</td></tr><tr><td>Day 10</td><td>Unit 3 / Lesson 1</td><td>67-68</td><td>WB: 44-45</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 2</td><td>70-72</td><td>WB: 46-47</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>73-74</td><td>WB: 48-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055161409, "course": "리딩"}, {"id": "seedsyl004", "title": "English Time 4", "dept": "중등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"6\" style=\"font-weight:800;background:#f4f6fb\">English Time 4</td></tr><tr><td rowspan=\"3\" colspan=\"5\">&nbsp;</td><td>16 weeks</td></tr><tr><td>2 days a week</td></tr><tr><td>32 days total</td></tr><tr><td>Week</td><td>Day</td><td>Lesson / Title</td><td>Pages</td><td>Activity</td><td>HW</td></tr><tr><td rowspan=\"2\">1st - OT</td><td>Day 1</td><td>Welcome Chapter <br>&lt;Classroom English&gt;</td><td>vi~vii</td><td>Classroom English 익히고 상황별 classroom English script 작성</td><td>Script 암기, wb welcome pages</td></tr><tr><td>Day 2</td><td>Classroom English 복습, script 발표 / Classroom Rule 정하기</td><td>vi~vii</td><td>Speaking Class Rule 정하기</td><td>wb welcome pages</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p 1~3</td><td>책진도</td><td>wb p1-2</td></tr><tr><td>Day 4</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p.3~4</td><td>규칙/불규칙 과거형 매칭 게임, p.3 Q&amp;A 연습</td><td>wb p3-4</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 5~7</td><td>책진도</td><td>wb p5-6</td></tr><tr><td>Day 6</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 7</td><td>p.7 긍정문 부정문 익힌 뒤 해당문장 사용해서 <br>Lotte World / Everland Map - Amusement park project</td><td>wb p7-8</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 8</td><td>Amusement Park Project Presentation <br>/ p.8 -ed sound 구분</td><td>N/A</td></tr><tr><td>Day 8</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 9~11</td><td>책진도 (House chores 익히고 p.11 문답 패턴 연습)</td><td>wb p9-10</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 11~12</td><td>p.11 문답패턴 연습 activity </td><td>wb p11-12</td></tr><tr><td>Day 10</td><td>Review 1</td><td>p.13~15</td><td>책진도</td><td>wb p13-15</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Review 1</td><td>&nbsp;</td><td>Ch1~3 문장패턴 복습 후 롤플레잉 스크립트 작성</td><td>script 암기</td></tr><tr><td>Day 12</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 17~18</td><td>길찾기 activity</td><td>wb p16-17</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 19~20</td><td>p. 19 문장패턴 활용 activity</td><td>wb p18-19</td></tr><tr><td>Day 14</td><td>Chapter 5 <br>&lt;At the Food Festival&gt;</td><td>p. 21~24</td><td>Food around the world 활동/책진도</td><td>wb p20-23</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 25~26</td><td>책진도, “will” 활용해서 사계절 계획 작성</td><td>wb p24-25</td></tr><tr><td>Day 16</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 27~28</td><td>사계절 계획 발표</td><td>wb p26-27</td></tr><tr><td rowspan=\"2\">9th</td><td>Day 17</td><td>Review 2</td><td>p. 29~31</td><td>책진도, 다음시간 p31 예습 <br>(영어로 사칙연산 - worksheet 활용)</td><td>wb p28-30</td></tr><tr><td>Day 18</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p.33~35</td><td>Sea animals / 책진도</td><td>wb p31-32</td></tr><tr><td rowspan=\"2\">10th</td><td>Day 19</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p. 35~36</td><td>비교급 활동</td><td>wb p33-34</td></tr><tr><td>Day 20</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 37~39</td><td>Animal-adjective matching / 최상급 패턴 익히기</td><td>wb p35-36</td></tr><tr><td rowspan=\"2\">11th</td><td>Day 21</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 39~40</td><td>최상급 활동</td><td>wb p37-38</td></tr><tr><td>Day 22</td><td>ch 7~8 review</td><td>&nbsp;</td><td>비교급/최상급 복습 <br>비교급, 최상급 활용해서 script 작성 <br>&lt;Who should be the king of the zoo?&gt;</td><td>script 암기</td></tr><tr><td rowspan=\"2\">12th</td><td>Day 23</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p.41~42</td><td>Script 발표, 책진도</td><td>wb p39-40</td></tr><tr><td>Day 24</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p. 43~44</td><td>스포츠 &lt;What do you like to do?&gt; 활동</td><td>wb p41-42</td></tr><tr><td rowspan=\"2\">13th</td><td>Day 25</td><td>Review 3</td><td>p. 45~47</td><td>책진도</td><td>wb p43-45</td></tr><tr><td>Day 26</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 49~51</td><td>책진도</td><td>wb p46-47</td></tr><tr><td rowspan=\"2\">14th</td><td>Day 27</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 51~52</td><td>p.51 패턴활용해서 like/dislike bingo 게임 후 activity</td><td>wb p48-49</td></tr><tr><td>Day 28</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 53~54</td><td>Solar system worksheet(각 행성 배우기)</td><td>wb p50-51</td></tr><tr><td rowspan=\"2\">15th</td><td>Day 29</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 55~56</td><td>Solar system 발표, 책진도</td><td>wb p52-53</td></tr><tr><td>Day 30</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 56~59</td><td>책진도</td><td>wb p54-55</td></tr><tr><td rowspan=\"2\">16th</td><td>Day 31</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 59~60</td><td>p.59 패턴으로 &lt;롤모델과의 인터뷰&gt; script 작성</td><td>wb p56-57</td></tr><tr><td>Day 32</td><td>Review 4</td><td>p.61~63</td><td>role-playing, 책진도 <br>/ p.63 어려워서 선생님이 같이 풀어주세요.</td><td>wb p58-60 / <br>wb p61-64 (extra hw)</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055162409, "course": "리딩"}]; store.syllabusSeeded=true; }
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
 const REPLACE_FIELDS=['uploads','students','teachers','bookedit','bookdone','daysedit','timeedit','wordbookOptions','testPaperOptions'];
@@ -941,14 +943,14 @@ function tabDefs(){
   const lt=loginTeacher();
   if(lt && !isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무일지'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 실러버스'],['roster','학생 명단'],['timetable','🕒 시간표'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   if(isMgr()){
     return {main:[['today','🏠 홈'],['consult','상담'],['report','업무보고'],['dash','반 · 교재']],
-            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
+            more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 실러버스'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정']]};
   }
   return {main:[['today','오늘 수업'],['consult','상담 관리'],['report','업무보고'],['dash','반 · 교재']],
-          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
+          more:[['bookgive','📦 교재배부'],['wordrange','📝 단어 범위'],['syllabus','📘 실러버스'],['roster','학생 명단'],['timetable','🕒 시간표'],['attend','출결 (월별)'],['yearly','연간 교재'],['cal','일정 · 회의'],['board','📋 게시판'],['archive','전체 기록'],['set','설정 · 업로드']]};
 }
 function goTab(t){
   state.tab=t;
@@ -2393,6 +2395,7 @@ function wtStudentRow(s, date){
         ${wbSel}
         ${langSel}
         <input type="text" placeholder="범위" value="${esc(r.range||'')}" data-wtfield="${s.id}|range" ${r.absent?'disabled':''} style="width:110px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
+        <input type="text" placeholder="점수 (예: 18/20)" value="${esc(r.score||'')}" data-wtfield="${s.id}|score" ${r.absent?'disabled':''} style="width:90px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.82rem;${dim}">
         ${studentIsHigh(s)?`<label style="font-size:.8rem;color:${r.accumulate?'#7c3aed':'var(--sub)'};${dim}" title="체크하면 이전 등원일 이틀치 시험 범위를 자동으로 이어서 채워줍니다"><input type="checkbox" data-wtaccum="${s.id}" ${r.accumulate?'checked':''} ${r.absent?'disabled':''}> 📚 누적</label>`:''}
         <label style="font-size:.8rem;color:${r.retestNeeded?'#c0392b':'var(--sub)'};${dim}"><input type="checkbox" data-wtretest="${s.id}" ${r.retestNeeded?'checked':''} ${r.absent?'disabled':''}> 재시험(O)</label>
         <label style="font-size:.8rem;color:${r.absent?'#6b7280':'var(--sub)'};font-weight:${r.absent?'800':'400'}"><input type="checkbox" data-wtabsent="${s.id}" ${r.absent?'checked':''}> 미응시</label>
@@ -2720,7 +2723,7 @@ function renderWordRange(list){
           if(rec.absent) cell='<span style="color:#9ca3af;font-size:.7rem">미응시</span>';
           else{
             const wbTxt=[wbShort(rec.wordbook),rec.lang].filter(Boolean).join(' ');
-            cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}`;
+            cell=`<span style="font-size:.7rem;color:var(--sub)">${esc(wbTxt)}</span>${rec.range?`<br><b style="font-size:.74rem">${esc(rec.range)}</b>`:''}${rec.score?`<br><span style="font-size:.72rem;color:#7c3aed;font-weight:800">📊 ${esc(rec.score)}</span>`:''}`;
           }
         }
         row+=`<td style="min-width:56px">${cell}</td>`;
@@ -5445,6 +5448,169 @@ function bindBoard(){
     save(); render(true);
   });
 }
+const SYL_DEPTS=['초등','중등','고등','기타'];
+function sylSheetsFromWorkbook(wb){
+  // 시트별로 <table> 마크업만 뽑아서 저장해둔다(엑셀 파일 자체를 다시 열지 않아도 그 자리에서 바로 미리보기 가능하도록)
+  return wb.SheetNames.map(name=>{
+    const ws=wb.Sheets[name];
+    const full=XLSX.utils.sheet_to_html(ws, {editable:false});
+    const m=full.match(/<table[\s\S]*?<\/table>/i);
+    return {name, html:m? m[0] : '<div class="empty">이 시트는 표시할 내용이 없습니다.</div>'};
+  });
+}
+function sylCourseOf(en){ return (en.course||'').trim() || '기타과정'; }
+function renderSyllabus(){
+  const admin=isAdminRole();
+  state.sylDept=state.sylDept||'전체';
+  state.sylCourse=state.sylCourse||'전체';
+  state.sylOpen=state.sylOpen||{};
+  const dchips=['전체',...SYL_DEPTS];
+  let h=`<div class="cbtns">${dchips.map(d=>`<button class="btn ${state.sylDept===d?'primary':'small'}" data-syldept="${esc(d)}">${esc(d)}</button>`).join('')}</div>`;
+  // 선택된 부서(또는 전체) 안에서 실제로 쓰이고 있는 과정/영역 값만 모아 두 번째 줄 칩으로 보여준다
+  const deptScoped=store.syllabus.filter(s=>!s._deleted && (state.sylDept==='전체'||s.dept===state.sylDept));
+  const courseSet=[...new Set(deptScoped.map(sylCourseOf))].sort((a,b)=>a.localeCompare(b,'ko'));
+  if(!courseSet.includes(state.sylCourse)) state.sylCourse='전체';
+  if(courseSet.length){
+    const cchips=['전체',...courseSet];
+    h+=`<div class="cbtns" style="margin-top:6px">${cchips.map(c=>`<button class="btn small ${state.sylCourse===c?'primary':''}" data-sylcourse="${esc(c)}">${esc(c)}</button>`).join('')}</div>`;
+  }
+  h+=`<div class="ysec"><h3>📘 실러버스 <span style="font-size:.74rem;font-weight:400;color:var(--sub)">교재별 진도표 · 모든 선생님이 볼 수 있어요${admin?' · 업로드·삭제는 실장·관리자만 가능합니다':' (업로드·수정은 실장·관리자만 가능합니다)'}</span></h3>
+    <div style="padding:0 16px 14px">
+    <input type="text" id="sylSearch" value="${esc(state.sylQ||'')}" placeholder="🔍 교재명으로 검색" style="width:100%;margin-bottom:12px;padding:8px 12px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.86rem">`;
+  if(admin){
+    const courseOptions=[...new Set(store.syllabus.filter(s=>!s._deleted).map(sylCourseOf))].sort((a,b)=>a.localeCompare(b,'ko'));
+    h+=`<div style="background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+        <input type="text" id="sylTitle" placeholder="교재/과정명 (파일 1개만 올릴 때만 적용, 비우면 파일명 사용)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+        <select id="sylDeptSel" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${SYL_DEPTS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
+        <input type="text" id="sylCourseInput" list="sylCourseList" placeholder="과정·영역 (예: 파닉스, 리딩, 문법 — 새로 입력 가능)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+        <datalist id="sylCourseList">${courseOptions.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+      </div>
+      <div class="cbtns"><button class="btn primary" id="sylUpBtn">📤 엑셀 파일 업로드 (진도표, 여러 개 선택 가능)</button><input type="file" id="sylUpFile" accept=".xlsx,.xls" multiple style="display:none"></div>
+      <div style="font-size:.76rem;color:var(--sub);margin-top:6px">엑셀 시트를 그대로 표로 변환해 올려둡니다. 시트가 여러 개면 탭으로 나눠 보여줘요. 파일을 여러 개 한 번에 선택하면 각각 파일명으로 등록됩니다 (부서·과정은 모두 위에서 고른 값으로 같이 적용).</div>
+    </div>`;
+  }
+  const entries=store.syllabus.filter(s=>!s._deleted && (state.sylDept==='전체'||s.dept===state.sylDept) && (state.sylCourse==='전체'||sylCourseOf(s)===state.sylCourse)).sort((a,b)=>(b.uploadedAt||0)-(a.uploadedAt||0));
+  if(!entries.length) h+='<div style="font-size:.83rem;color:#8b93a7">등록된 실러버스가 없습니다.</div>';
+  h+='<div id="sylNoMatch" class="empty" style="display:none;font-size:.83rem;color:#8b93a7;padding:10px 0">검색 결과가 없습니다.</div>';
+  entries.forEach(en=>{
+    const open=!!state.sylOpen[en.id];
+    h+=`<div class="ccard syl-card ${open?'open':''}" data-syltitle="${esc((en.title||'').toLowerCase())}" style="border-left-color:var(--ebest);margin-bottom:12px">
+      <div class="chead" data-toggle="${esc(en.id)}"><span class="arrow">▶</span>
+        <span style="font-weight:800">${esc(en.title||'제목 없음')}</span>
+        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}</span>
+        ${admin?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn small sylRename" data-id="${esc(en.id)}">✎ 이름 수정</button><button class="btn small sylCourseEdit" data-id="${esc(en.id)}">📂 과정 수정</button><button class="del sylDel" data-id="${esc(en.id)}">삭제</button></span>`:''}
+      </div>
+      <div class="cbody" style="padding:12px 16px">`;
+    if(en.sheets && en.sheets.length>1){
+      state.sylSheetSel=state.sylSheetSel||{};
+      const cur=state.sylSheetSel[en.id]||en.sheets[0].name;
+      h+=`<div class="cbtns" style="margin-bottom:10px">${en.sheets.map(sh=>`<button class="btn ${cur===sh.name?'primary':'small'} sylSheetBtn" data-id="${esc(en.id)}" data-sheet="${esc(sh.name)}">${esc(sh.name)}</button>`).join('')}</div>`;
+      const active=en.sheets.find(sh=>sh.name===cur)||en.sheets[0];
+      h+=`<div style="overflow-x:auto">${active.html}</div>`;
+    } else if(en.sheets && en.sheets.length===1){
+      h+=`<div style="overflow-x:auto">${en.sheets[0].html}</div>`;
+    } else {
+      h+='<div class="empty">표시할 내용이 없습니다.</div>';
+    }
+    h+='</div></div>';
+  });
+  h+='</div></div>';
+  return h;
+}
+function bindSyllabus(){
+  const v=document.getElementById('view');
+  const lt=loginTeacher(); const myName=lt?lt.t.name:(store.login==='admin'?'관리자':'');
+  v.querySelectorAll('[data-syldept]').forEach(b=>b.onclick=()=>{ state.sylDept=b.dataset.syldept; state.sylCourse='전체'; render(true); });
+  v.querySelectorAll('[data-sylcourse]').forEach(b=>b.onclick=()=>{ state.sylCourse=b.dataset.sylcourse; render(true); });
+  const applySylSearch=(q)=>{
+    const qq=(q||'').trim().toLowerCase();
+    const cards=[...v.querySelectorAll('.syl-card')];
+    let shown=0;
+    cards.forEach(c=>{
+      const match=!qq || (c.dataset.syltitle||'').includes(qq);
+      c.style.display=match?'':'none';
+      if(match) shown++;
+    });
+    const noMatch=v.querySelector('#sylNoMatch');
+    if(noMatch) noMatch.style.display=(cards.length && shown===0)?'':'none';
+  };
+  const sylSearch=v.querySelector('#sylSearch');
+  if(sylSearch){
+    applySylSearch(sylSearch.value);
+    sylSearch.addEventListener('input',e=>{
+      state.sylQ=e.target.value;
+      applySylSearch(e.target.value);
+    });
+  }
+  v.querySelectorAll('.chead').forEach(hd=>hd.addEventListener('click',e=>{
+    if(e.target.closest('button')) return;
+    const k=hd.dataset.toggle;
+    state.sylOpen=state.sylOpen||{};
+    state.sylOpen[k]=!state.sylOpen[k];
+    hd.parentElement.classList.toggle('open');
+  }));
+  v.querySelectorAll('.sylSheetBtn').forEach(b=>b.onclick=()=>{
+    state.sylSheetSel=state.sylSheetSel||{};
+    state.sylSheetSel[b.dataset.id]=b.dataset.sheet;
+    state.sylOpen=state.sylOpen||{}; state.sylOpen[b.dataset.id]=true;
+    render(true);
+  });
+  const upBtn=v.querySelector('#sylUpBtn'), upFile=v.querySelector('#sylUpFile');
+  if(upBtn) upBtn.onclick=()=>{ if(!isAdminRole()) return; upFile.click(); };
+  const readOneXlsx=(f)=>new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>{ try{
+      const wb=XLSX.read(new Uint8Array(r.result),{type:'array'});
+      resolve(sylSheetsFromWorkbook(wb));
+    }catch(e){ reject(e); } };
+    r.onerror=()=>reject(r.error||new Error('파일을 읽지 못했습니다'));
+    r.readAsArrayBuffer(f);
+  });
+  if(upFile) upFile.onchange=async()=>{
+    if(!isAdminRole()) return;
+    const files=[...upFile.files]; if(!files.length) return;
+    const titleEl=v.querySelector('#sylTitle'), deptEl=v.querySelector('#sylDeptSel'), courseEl=v.querySelector('#sylCourseInput');
+    const singleTitle=titleEl&&titleEl.value.trim();
+    const dept=deptEl?deptEl.value:'기타';
+    const course=(courseEl&&courseEl.value.trim())||'';
+    const failed=[];
+    for(const f of files){
+      const title=(files.length===1 && singleTitle) ? singleTitle : f.name.replace(/\.(xlsx|xls)$/i,'');
+      try{
+        const sheets=await readOneXlsx(f);
+        store.syllabus.push({id:'syl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4), title, dept, course, sheets, uploadedBy:myName, uploadedAt:Date.now()});
+      }catch(e){ failed.push(f.name); }
+    }
+    save(); if(titleEl) titleEl.value=''; if(courseEl) courseEl.value=''; upFile.value=''; render(true);
+    if(failed.length) alert('다음 파일은 읽지 못했습니다:\n'+failed.join('\n'));
+  };
+  v.querySelectorAll('.sylDel').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    if(!confirm('이 실러버스를 삭제할까요?')) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(en){ en._deleted=true; en.updatedAt=Date.now(); }
+    save(); render(true);
+  });
+  v.querySelectorAll('.sylRename').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
+    const nv=prompt('새 이름을 입력하세요', en.title||'');
+    if(nv==null) return; // 취소
+    const trimmed=nv.trim();
+    if(!trimmed){ alert('이름을 입력해주세요.'); return; }
+    en.title=trimmed; en.updatedAt=Date.now();
+    save(); render(true);
+  });
+  v.querySelectorAll('.sylCourseEdit').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
+    const nv=prompt('과정·영역 이름을 입력하세요 (예: 파닉스, 리딩, 문법)', sylCourseOf(en));
+    if(nv==null) return; // 취소
+    en.course=nv.trim(); en.updatedAt=Date.now();
+    save(); render(true);
+  });
+}
+
 function repCal(){
   let h='';
   const evs=calSorted();
@@ -6324,7 +6490,7 @@ function reportHTML(){
     if(whoTeacher(who)) return state.rkind==='weekly' ? repWeekPlan(who, weekOf(state.date)) : repDailyJournal(who, state.date);
   }
   const date=todayISO();
-  const tabName={dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
+  const tabName={dash:'반 · 교재 현황',today:'수업 일지 (출석 · 숙제)',consult:'상담 기록',attend:'월별 출결부',report:(state.rkind==='weekly'?'주간 진도계획표':'업무일지'),yearly:'연간 교재 내역',stats:'학생 통계',cal:'학사일정 · 회의록',board:'게시판',syllabus:'실러버스',archive:'전체 기록 모아보기',set:'선생님 설정'}[state.tab];
   let extra='';
   if(state.tab==='consult'&&state.tf) extra=' — '+store.teachers[state.tf.a][state.tf.i].name+' 선생님';
   const lt=loginTeacher();
@@ -6437,6 +6603,8 @@ function render(keepOpen){
     v.innerHTML=renderArchive(); bindArchive();
   } else if(state.tab==='board'){
     v.innerHTML=renderBoard(); bindBoard();
+  } else if(state.tab==='syllabus'){
+    v.innerHTML=renderSyllabus(); bindSyllabus();
   } else { v.innerHTML=renderSet(); bindSet(); }
   }catch(renderErr){
     // 특정 탭 내용을 그리다 오류가 나도 상단 탭바(더보기·설정 포함)는 항상 눌리도록, 오류를 여기서 잡아 안내 화면만 보여준다
