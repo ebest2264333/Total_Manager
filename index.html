@@ -699,14 +699,22 @@ async function pollInbox(){
     if(n){ localStorage.setItem(KEY, JSON.stringify(store)); render(true); toast('📥 새 제출 '+n+'건 수신'); schedulePushShared(); }
   }catch(e){ console.warn('inbox 확인 실패', e); }
 }
+let __syncLoopStarted=false, __pullTimerId=null, __sylTimerId=null;
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
   pullSyllabusShared(true);
+  // 설정에서 동기화를 껐다 켰다 할 때마다 이 함수가 다시 호출될 수 있는데, 예전엔 그때마다 새 타이머가 계속 추가로 쌓여서
+  // (2번 켰다 끄면 5초마다 2배, 3배로 계속 요청이 늘어남) 하루 만에 다운로드량이 폭증하는 원인이 됐다.
+  // 그래서 새로 걸기 전에 기존 타이머부터 반드시 정리한다.
+  if(__pullTimerId) clearInterval(__pullTimerId);
+  if(__sylTimerId) clearInterval(__sylTimerId);
   // 다른 사람이 바꾼 내용도 빨리 보이도록 5초마다 확인 (용량 큰 syllabus는 따로, 45초마다만 — 매 5초마다 첨부파일까지 통째로 주고받으면 회선이 느릴 때 자꾸 실패·타임아웃 나기 때문)
-  if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, 5000); }
-  else setInterval(()=>pullShared(false), 5000);
-  setInterval(()=>pullSyllabusShared(true), 45000);
+  if(MODE==='all'){ pollInbox(); __pullTimerId=setInterval(()=>{ pullShared(false); pollInbox(); }, 5000); }
+  else __pullTimerId=setInterval(()=>pullShared(false), 5000);
+  __sylTimerId=setInterval(()=>pullSyllabusShared(true), 45000);
+  if(__syncLoopStarted) return; // 화면 이벤트 리스너는 한 번만 등록
+  __syncLoopStarted=true;
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ pullShared(true); if(MODE==='all') pollInbox(); } });
 }
 
