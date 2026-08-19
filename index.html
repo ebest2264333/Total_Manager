@@ -5519,6 +5519,24 @@ function renderSyllabus(){
     } else {
       h+='<div class="empty">표시할 내용이 없습니다.</div>';
     }
+    const atts=en.attachments||[];
+    if(atts.length || admin){
+      h+=`<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+        <div style="font-size:.78rem;font-weight:800;color:var(--sub);margin-bottom:6px">📎 첨부 자료 (문제 파일 등)</div>`;
+      if(atts.length){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+atts.map(at=>
+          `<span style="display:inline-flex;align-items:center;gap:6px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:5px 9px">
+            <a href="${at.fileData}" download="${esc(at.fileName||'file')}" style="font-size:.8rem;color:var(--ink);font-weight:700;text-decoration:none">⬇ ${esc(at.fileName||'파일')}</a>
+            ${admin?`<button class="del sylAttDel" data-id="${esc(en.id)}" data-attid="${esc(at.id)}" style="font-size:.72rem;padding:1px 6px">✕</button>`:''}
+          </span>`).join('')+'</div>';
+      } else if(!admin){
+        h+='<div style="font-size:.78rem;color:#8b93a7">첨부된 자료가 없습니다.</div>';
+      }
+      if(admin){
+        h+=`<button class="btn small sylAttBtn" data-id="${esc(en.id)}">📎 문제 파일 등 첨부</button><input type="file" class="sylAttFile" data-id="${esc(en.id)}" multiple style="display:none">`;
+      }
+      h+='</div>';
+    }
     h+='</div></div>';
   });
   h+='</div></div>';
@@ -5636,6 +5654,40 @@ function bindSyllabus(){
     const nv=prompt('과정·영역 이름을 입력하세요 (예: 파닉스, 리딩, 문법)', sylCourseOf(en));
     if(nv==null) return; // 취소
     en.course=nv.trim(); en.updatedAt=Date.now();
+    save(); render(true);
+  });
+  v.querySelectorAll('.sylAttBtn').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const inp=v.querySelector('.sylAttFile[data-id="'+b.dataset.id+'"]');
+    if(inp) inp.click();
+  });
+  v.querySelectorAll('.sylAttFile').forEach(inp=>inp.onchange=async()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===inp.dataset.id); if(!en) return;
+    const files=[...inp.files]; if(!files.length) return;
+    en.attachments=en.attachments||[];
+    const tooBig=[], failed=[];
+    for(const f of files){
+      if(f.size>SYL_MAX_BYTES){ tooBig.push(f.name); continue; }
+      try{
+        const fileData=await readAsDataURL(f);
+        en.attachments.push({id:'att'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), fileName:f.name, fileData});
+      }catch(e){ failed.push(f.name); }
+    }
+    en.updatedAt=Date.now();
+    let saveErr=null;
+    try{ save(); }catch(e){ saveErr=e; }
+    inp.value=''; render(true);
+    if(saveErr) alert('저장 공간이 부족해 첨부 파일이 저장되지 못했을 수 있습니다.\n('+(saveErr&&saveErr.message||saveErr)+')');
+    if(tooBig.length) alert('다음 파일은 너무 커서(6MB 초과) 첨부하지 못했습니다:\n'+tooBig.join('\n'));
+    if(failed.length) alert('다음 파일은 읽지 못했습니다:\n'+failed.join('\n'));
+  });
+  v.querySelectorAll('.sylAttDel').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
+    if(!confirm('이 첨부 파일을 삭제할까요?')) return;
+    en.attachments=(en.attachments||[]).filter(a=>a.id!==b.dataset.attid);
+    en.updatedAt=Date.now();
     save(); render(true);
   });
 }
