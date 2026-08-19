@@ -6644,24 +6644,31 @@ function parseIconWeeklyTimetable(wb){
       return rgb.length===8?rgb.slice(2):rgb; // ARGB면 알파 제거하고 RGB만
     };
     const minR=range.s.r, maxR=range.e.r, minC=range.s.c, maxC=range.e.c;
-    // "주(...)" 라벨이 있는 열을 시트 왼쪽에서 찾는다(시트마다 A열부터 시작하기도, B열부터 시작하기도 함)
+    // "N주" 라벨이 있는 열을 시트 왼쪽에서 찾는다(시트마다 A열부터 시작하기도, B열부터 시작하기도 함)
+    // "26년 4월 1주(3월 30일 - 5월 1일)"처럼 날짜 범위가 괄호로 붙은 형식과, "26년 8월 1주"처럼 주 번호만 있고
+    // 날짜 범위가 아예 없는 형식(실제 최신 시간표는 이 형식으로 오는 경우가 많음) 둘 다 인식해야 한다.
     let labelCol=-1;
     for(let c=minC;c<=Math.min(minC+3,maxC);c++){
       for(let r=minR;r<=maxR;r++){
-        if(/주\(/.test(String(cellVal(r,c)||''))){ labelCol=c; break; }
+        if(/\d주/.test(String(cellVal(r,c)||''))){ labelCol=c; break; }
       }
       if(labelCol>=0) break;
     }
     if(labelCol<0) return;
-    // 시트 이름(예: "(26)8월|시간표")에 적힌 달과, 그 안의 주(週) 라벨이 말하는 달이 서로 다르면
-    // 원본 파일에 오래된 내용을 복사해놓고 안 고친 실수일 가능성이 높다 — 조용히 아무 쪽으로 우선순위를
-    // 정해 덮어쓰지 않고, 라벨에 적힌 그대로 저장하되 업로드 결과 메시지에 경고로 알려준다.
+    // 시트 이름(예: "(26)8월|시간표")에 적힌 달을 그 시트 안 모든 주의 기준으로 삼는다 — 주 라벨 안의 "◯월" 글자가
+    // 예전 걸 복사해온 채로 안 바뀐 경우가 있는데, 그래도 시트 이름 쪽이 그 파일이 실제로 어느 달 자료인지
+    // 학원 측이 의도적으로 붙인 것이라 더 믿을 수 있다(사용자 확인).
     const snMonthMatch=sn.match(/\((\d{2,4})\)\s*(\d{1,2})월/);
     const sheetMonth=snMonthMatch?+snMonthMatch[2]:null;
+    // 그 달 1일이 속한 주의 월요일(그 달 1일이거나 그 이전) 날짜를 구한다 — "N주"가 날짜 범위 없이
+    // 주 번호만 있을 때, 이 월요일 기준으로 (N-1)*7일을 더해 시작일을 계산하는 데 쓴다.
+    // (같은 파일 안의 날짜 범위가 있는 주들로 검증됨: 4월 1일 기준 월요일=3월30일, 실제로 "4월 1주"가 3월30일 시작으로 적혀있음)
+    const mondayOnOrBefore=(y,m,d)=>{ const dt=new Date(Date.UTC(y,m-1,d)); const dow=dt.getUTCDay(); const back=dow===0?6:dow-1; dt.setUTCDate(dt.getUTCDate()-back); return dt; };
+    const fmtDate=dt=>dt.toISOString().slice(0,10);
     let sheetWeeks=0;
     for(let r=minR;r<=maxR;r++){
       const label=String(cellVal(r,labelCol)||'').trim();
-      if(!/주\(/.test(label)) continue;
+      if(!/\d주/.test(label)) continue;
       if(r>minR && String(cellVal(r-1,labelCol)||'').trim()===label) continue; // 같은 주 라벨이 이어지는 병합행 — 이미 처리한 라벨은 건너뜀
       let hr=r;
       while(hr+1<=maxR && String(cellVal(hr+1,labelCol)||'').trim()===label) hr++;
@@ -6677,11 +6684,10 @@ function parseIconWeeklyTimetable(wb){
       // "3월 30일 - 5월 1일"처럼 끝 월이 있는 경우와 "12월 15일-26일"처럼 끝 월 표기가 생략된(시작 월과 같은) 경우 둘 다 인식
       const dm=label.match(/\((\d{1,2})월\s*(\d{1,2})일\s*-\s*(?:(\d{1,2})월\s*)?(\d{1,2})일\)/);
       const ym=label.match(/(\d{2,4})년/);
+      const wkNumM=label.match(/(\d{1,2})주/);
       let start='', end='';
       if(dm){
-        // 시트 이름(예: "(26)8월|시간표")에 달이 적혀있으면 그걸 기준으로 삼는다 — 실제 학원 자료에서 주 라벨 안의
-        // "◯월" 글자가 예전 걸 복사해온 채로 안 바뀐 경우가 있는데, 그래도 시트 이름 쪽이 그 파일이 실제로 어느 달
-        // 자료인지 학원 측이 의도적으로 붙인 것이라 더 믿을 수 있다(사용자 확인).
+        // 시트 이름에 달이 적혀있으면 그걸 기준으로 삼는다
         const labelStartMonth=+dm[1], labelEndMonth=dm[3]?+dm[3]:+dm[1];
         const monthOffset=labelEndMonth-labelStartMonth; // 보통 0(한 달 안) 또는 1(다음 달로 넘어감)
         let year, startMonth, endMonth;
@@ -6697,13 +6703,23 @@ function parseIconWeeklyTimetable(wb){
         else if(endMonth<startMonth) endYear=String(+year+1); // 12월→1월처럼 해를 넘기는 주
         start=year+'-'+String(startMonth).padStart(2,'0')+'-'+String(+dm[2]).padStart(2,'0');
         end=endYear+'-'+String(endMonth).padStart(2,'0')+'-'+String(+dm[4]).padStart(2,'0');
+      } else if(wkNumM && (sheetMonth!=null || ym)){
+        // 날짜 범위 없이 "26년 8월 1주"처럼 주 번호만 있는 경우 — 그 달 1일이 속한 주의 월요일부터
+        // (주번호-1)*7일 뒤를 시작일로 계산한다(같은 파일의 날짜-범위가 있는 주들과 대조해 검증된 방식).
+        const year=sheetMonth!=null?(snMonthMatch[1].length===2?'20'+snMonthMatch[1]:snMonthMatch[1]):(ym[1].length===2?'20'+ym[1]:ym[1]);
+        const month=sheetMonth!=null?sheetMonth:+label.match(/(\d{1,2})월/)[1];
+        const wkNum=+wkNumM[1];
+        const m1=mondayOnOrBefore(+year, month, 1);
+        const s=new Date(m1); s.setUTCDate(s.getUTCDate()+(wkNum-1)*7);
+        const e=new Date(s); e.setUTCDate(e.getUTCDate()+6);
+        start=fmtDate(s); end=fmtDate(e);
       }
       // 시간대별 행 스캔(다음 주 블록이 시작되기 전까지)
       const entries=[];
       let rr=dayRow+1, prevLabel=null;
       while(rr<=maxR){
         const b=String(cellVal(rr,labelCol)||'').trim();
-        if(/주\(/.test(b)) break;
+        if(/\d주/.test(b)) break;
         if(!b){ rr++; prevLabel=null; continue; }
         if(b===prevLabel){ rr++; continue; } // 같은 시간대 블록이 여러 줄에 걸쳐 병합된 경우 — 첫 줄만 처리
         prevLabel=b;
@@ -6721,7 +6737,13 @@ function parseIconWeeklyTimetable(wb){
       }
       if(!entries.length) continue;
       const weekKey=start||('sheet:'+sn+':'+r);
-      weeks[weekKey]={label, start, end, dayCols, entries, sourceSheet:sn, sheetMonth, updatedAt:Date.now()};
+      // 화면에 보여줄 라벨은 원본 파일 글자(다른 달로 오인식될 수 있는 문구) 대신, 시트 이름 기준으로 새로 계산한 날짜로 다시 만든다.
+      let dispLabel=label;
+      if(start&&end){
+        const sMo=+start.slice(5,7), sDa=+start.slice(8,10), eMo=+end.slice(5,7), eDa=+end.slice(8,10);
+        dispLabel=`${sMo}월${wkNumM?' '+wkNumM[1]+'주':''}(${sMo}월 ${sDa}일 - ${eMo}월 ${eDa}일)`;
+      }
+      weeks[weekKey]={label:dispLabel, origLabel:label, start, end, dayCols, entries, sourceSheet:sn, sheetMonth, updatedAt:Date.now()};
       sheetWeeks++;
     }
     if(sheetWeeks) sheets.push(sn+' ('+sheetWeeks+'주)');
