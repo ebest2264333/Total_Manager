@@ -5621,6 +5621,11 @@ function renderSyllabus(){
               <a href="${esc(at.url)}" target="_blank" rel="noopener" style="font-size:.8rem;color:var(--ink);font-weight:700;text-decoration:none">🔗 ${esc(at.fileName||'링크')}</a>
               ${admin?`<button class="del sylAttDel" data-id="${esc(en.id)}" data-attid="${esc(at.id)}" style="font-size:.72rem;padding:1px 6px">✕</button>`:''}
             </span>`
+          : at.remote
+          ? `<span style="display:inline-flex;align-items:center;gap:6px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:5px 9px">
+              <button class="sylAttOpen" data-attid="${esc(at.id)}" data-name="${esc(at.fileName||'파일')}" style="border:none;background:none;cursor:pointer;font-size:.8rem;color:var(--ink);font-weight:700;padding:0">⬇ ${esc(at.fileName||'파일')}</button>
+              ${admin?`<button class="del sylAttDel" data-id="${esc(en.id)}" data-attid="${esc(at.id)}" style="font-size:.72rem;padding:1px 6px">✕</button>`:''}
+            </span>`
           : `<span style="display:inline-flex;align-items:center;gap:6px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:5px 9px">
               <a href="${at.fileData}" download="${esc(at.fileName||'file')}" style="font-size:.8rem;color:var(--ink);font-weight:700;text-decoration:none">⬇ ${esc(at.fileName||'파일')}</a>
               ${admin?`<button class="del sylAttDel" data-id="${esc(en.id)}" data-attid="${esc(at.id)}" style="font-size:.72rem;padding:1px 6px">✕</button>`:''}
@@ -5698,6 +5703,8 @@ function bindSyllabus(){
     r.readAsDataURL(f);
   });
   const SYL_MAX_BYTES=3*1024*1024; // 브라우저 저장 공간 한도를 고려한 파일당 상한(3MB) — 더 큰 파일은 '링크로 추가'를 이용
+  // 첨부 자료(문제 파일 등)는 이 기기 로컬 저장소에 쌓아두지 않고 Firebase에만 저장했다가 열 때 그때 불러옵니다 — 그래서 본문 자료보다 훨씬 큰 파일도 안전합니다.
+  const SYL_ATT_MAX_BYTES = syncOn() ? 10*1024*1024 : SYL_MAX_BYTES; // 동기화 켜짐: 10MB · 꺼짐(로컬 전용): 3MB(로컬 저장소에 그대로 들어가므로)
   if(upFile) upFile.onchange=async()=>{
     if(!isAdminRole()) return;
     const files=[...upFile.files]; if(!files.length) return;
@@ -5783,10 +5790,17 @@ function bindSyllabus(){
     en.attachments=en.attachments||[];
     const tooBig=[], failed=[];
     for(const f of files){
-      if(f.size>SYL_MAX_BYTES){ tooBig.push(f.name); continue; }
+      if(f.size>SYL_ATT_MAX_BYTES){ tooBig.push(f.name); continue; }
+      const attId='att'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
       try{
         const fileData=await readAsDataURL(f);
-        en.attachments.push({id:'att'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), fileName:f.name, fileData});
+        if(syncOn()){
+          // 이 기기 저장소엔 안 쌓아두고 서버에만 저장 — 볼 때 그때 불러온다
+          await fbPut('/syllabusFiles/'+attId, {fileName:f.name, fileData}, 30000);
+          en.attachments.push({id:attId, fileName:f.name, remote:true, size:f.size});
+        } else {
+          en.attachments.push({id:attId, fileName:f.name, fileData});
+        }
       }catch(e){ failed.push(f.name); }
     }
     en.updatedAt=Date.now();
@@ -5794,15 +5808,29 @@ function bindSyllabus(){
     try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
     inp.value=''; render(true);
     if(saveErr) sylErrAlert(saveErr, '첨부 파일');
-    if(tooBig.length) alert('다음 파일은 너무 커서(6MB 초과) 첨부하지 못했습니다:\n'+tooBig.join('\n'));
-    if(failed.length) alert('다음 파일은 읽지 못했습니다:\n'+failed.join('\n'));
+    if(tooBig.length) alert('다음 파일은 너무 커서('+Math.round(SYL_ATT_MAX_BYTES/1024/1024)+'MB 초과) 첨부하지 못했습니다:\n'+tooBig.join('\n'));
+    if(failed.length) alert('다음 파일은 올리지 못했습니다(네트워크 확인):\n'+failed.join('\n'));
+  });
+  v.querySelectorAll('.sylAttOpen').forEach(b=>b.onclick=async()=>{
+    if(b.disabled) return;
+    const origLabel=b.textContent;
+    b.disabled=true; b.textContent='⏳ 불러오는 중...';
+    try{
+      const data=await fbGet('/syllabusFiles/'+b.dataset.attid, 30000);
+      if(!data || !data.fileData) throw new Error('파일을 찾을 수 없습니다');
+      const a=document.createElement('a'); a.href=data.fileData; a.download=data.fileName||b.dataset.name||'file';
+      document.body.appendChild(a); a.click(); a.remove();
+    }catch(e){ alert('파일을 불러오지 못했습니다: '+(e.message||e)); }
+    finally{ b.disabled=false; b.textContent=origLabel; }
   });
   v.querySelectorAll('.sylAttDel').forEach(b=>b.onclick=()=>{
     if(!isAdminRole()) return;
     const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
     if(!confirm('이 첨부 파일을 삭제할까요?')) return;
+    const removed=(en.attachments||[]).find(a=>a.id===b.dataset.attid);
     en.attachments=(en.attachments||[]).filter(a=>a.id!==b.dataset.attid);
     en.updatedAt=Date.now();
+    if(removed && removed.remote) fbDel('/syllabusFiles/'+removed.id);
     save(); schedulePushSyllabus(); render(true);
   });
   v.querySelectorAll('.sylAttLinkBtn').forEach(b=>b.onclick=()=>{
