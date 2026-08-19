@@ -416,7 +416,8 @@ if(!store.sharedAt) store.sharedAt=0;
 if(!store.inboxDone) store.inboxDone={};
 if(!store.boardPosts) store.boardPosts=[]; // 게시판(오류 제보·1:1 문의·공지) — {id, kind:'issue'|'ask'|'notice', title, body, authorName, authorAcademy, private, createdAt, replies:[{body,authorName,createdAt}], resolved}
 if(!store.syllabus) store.syllabus=[]; // 실러버스(교재별 진도표) — {id, title, book, dept, course, academy, sheets:[{name,html}], uploadedBy, uploadedAt} · 모든 선생님 열람, 실장 이상만 업로드/삭제
-const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts','syllabus'];
+const SHARE_FIELDS=['uploads','bookedit','bookdone','daysedit','timeedit','calendar','meetings','teachers','adminEmail','enrollment','newStudents','students','admissionConsults','wordTests','attend','homework','stayback','bookGiven','uploadTombstones','uploadStamps','wordbookOptions','testPaperOptions','giveSel','consultRequests','records','assign','cmemo','worklog','weekplan','submits','handover','boardPosts'];
+// syllabus(실러버스)는 PDF/한글/워드 첨부가 커서 별도 경로(/syllabus)로, 낮은 빈도로만 동기화합니다 — 그래야 매 5초/매 입력마다 전체를 전송하지 않습니다.
 if(!store.syllabusSeeded && store.syllabus.length===0){ store.syllabus=[{"id": "seedsyl001", "title": "Spider Phonics Syllabus", "dept": "초등", "sheets": [{"name": "Phonic 1 Yellow", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-YELLOW (3 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>달러파티 영상, OT: A~Z</td><td>&nbsp;</td><td>2-5</td><td>2025-02-05</td></tr><tr><td>Day 2</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>6-7</td><td>2025-08-09</td></tr><tr><td>Day 3</td><td>Unit 1. B,V</td><td>&nbsp;</td><td>10-13</td><td>14-15, B/V 단어시험 공부</td></tr><tr><td>Day 4</td><td>Unit 2. P,F</td><td>B/V 시험</td><td>16-17</td><td>18-19</td></tr><tr><td>Day 5</td><td>Unit 2. P,F</td><td>&nbsp;</td><td>20-23</td><td>24-25, P/F 단어시험 공부</td></tr><tr><td>Day 6</td><td>Unit 3. L,R</td><td>P/F 시험</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3. L,R</td><td>&nbsp;</td><td>30-33</td><td>34-35, L/R 단어시험 공부</td></tr><tr><td>Day 8</td><td>Unit 4. J,Z</td><td>L/R 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4. J,Z</td><td>&nbsp;</td><td>40-43</td><td>44-45, J/Z 단어시험 공부</td></tr><tr><td>Day 10</td><td>Unit 5. D,T</td><td>J/Z 시험</td><td>46-47</td><td>48-49</td></tr><tr><td>Day 11</td><td>Unit 5. D,T</td><td>&nbsp;</td><td>50-53</td><td>54-55, D/T 시험공부 <br>알파벳 시험공부</td></tr><tr><td>Day 12</td><td>Review</td><td>D/T 시험</td><td>Review</td><td>&nbsp;</td></tr></table>"}, {"name": "Phonic 1 Pink", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 1-PINK (2 Days)</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>56-57</td><td>58-59</td></tr><tr><td>Day 2</td><td>Unit 6. S,X</td><td>&nbsp;</td><td>60-63</td><td>64-65, S,X 시험준비</td></tr><tr><td>Day 3</td><td>Unit 7. M,N,G</td><td>S,X 시험</td><td>66-67</td><td>68-69</td></tr><tr><td>Day 4</td><td>Unit 7. M,N,G</td><td>&nbsp;</td><td>70-73</td><td>74-75, M,N,G 시험준비</td></tr><tr><td>Day 5</td><td>Unit 8. C,K,Q</td><td>M,N,G 시험</td><td>76-77</td><td>78-79</td></tr><tr><td>Day 6</td><td>Unit 8. C,K,Q</td><td>&nbsp;</td><td>80-83</td><td>84-85, C,K,Q 시험준비</td></tr><tr><td>Day 7</td><td>Unit 9. W,Y,H</td><td>C,K,Q 시험</td><td>86-87</td><td>88-89</td></tr><tr><td>Day 8</td><td>Unit 9. W,Y,H</td><td>&nbsp;</td><td>90-93</td><td>94-95</td></tr></table>"}, {"name": "Phonic 2 Green", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 2 - Green Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(short A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(short A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (short I)</td><td>Unit 1 <br>short A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (short I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 조합판</td><td>Unit 2 <br>Short I 시험</td><td>92, 94</td><td>93, 95</td></tr><tr><td>Day 6</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Short U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Short O)</td><td>Unit 3<br>Short U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Short O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 조합판</td><td>Unit 4<br>Short O 시험</td><td>96,98</td><td>97,99</td></tr><tr><td>Day 11</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Short E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (ar, or)</td><td>Unit 5 <br>Short E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (ar, or)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 조합판</td><td>Unit 6  <br>ar, or 시험</td><td>100</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (aw, au)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (er, ir, ur)</td><td>Unit 7 <br>aw, au 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (er, ir, ur)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 review</td><td>Unit 8 <br>er, ir, ur 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 3 Blue", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 3 - Blue Book</td></tr><tr><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td>Day 1</td><td>OT, Unit 1(Long A)</td><td>&nbsp;</td><td>2-5</td><td>2025-06-07</td></tr><tr><td>Day 2</td><td>Unit 1(Long A)</td><td>&nbsp;</td><td>8-11</td><td>12-13, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (Long I)</td><td>Unit 1 <br>Long A 단어시험</td><td>14-15</td><td>16-17</td></tr><tr><td>Day 4</td><td>Unit 2 (Long I)</td><td>&nbsp;</td><td>18-21</td><td>22-23, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 1-2 Story, 발표 촬영</td><td>Unit 2 <br>Long I 시험</td><td>24-25</td><td>p93,95</td></tr><tr><td>Day 6</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>26-27</td><td>28-29</td></tr><tr><td>Day 7</td><td>Unit 3 (Long U)</td><td>&nbsp;</td><td>30-33</td><td>34-35, Unit 3 시험공부</td></tr><tr><td>Day 8</td><td>Unit 4 (Long O)</td><td>Unit 3<br>Long U 시험</td><td>36-37</td><td>38-39</td></tr><tr><td>Day 9</td><td>Unit 4 (Long O)</td><td>&nbsp;</td><td>40-43</td><td>44-45, Unit 4 시험공부</td></tr><tr><td>Day 10</td><td>Unit 3-4 Story, 발표 촬영</td><td>Unit 4<br>Long O 시험</td><td>46-47</td><td>96,98</td></tr><tr><td>Day 11</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>48-49</td><td>50-51</td></tr><tr><td>Day 12</td><td>Unit 5 (Long E)</td><td>&nbsp;</td><td>52-55</td><td>56-57, Unit 5 시험공부</td></tr><tr><td>Day 13</td><td>Unit 6 (oi, oy)</td><td>Unit 5 <br>Long E 시험</td><td>58-59</td><td>60-61</td></tr><tr><td>Day 14</td><td>Unit 6 (oi, oy)</td><td>&nbsp;</td><td>62-65</td><td>66-67, Unit 6 시험공부</td></tr><tr><td>Day 15</td><td>Unit 5-6 Story, 발표촬영</td><td>Unit 6  <br>oi, oy 시험</td><td>68-69</td><td>101</td></tr><tr><td>Day 16</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>70-71</td><td>72-73</td></tr><tr><td>Day 17</td><td>Unit 7 (ou, ow)</td><td>&nbsp;</td><td>74-77</td><td>78-79, Unit 7 시험공부</td></tr><tr><td>Day 18</td><td>Unit 8 (oo, ew)</td><td>Unit 7 <br>ou, ow 시험</td><td>80-81</td><td>82-83</td></tr><tr><td>Day 19</td><td>Unit 8 (oo, ew)</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 20</td><td>Unit 7-8 Story, 발표촬영</td><td>Unit 8 <br>oo, ew 시험</td><td>90-91</td><td>N/A</td></tr></table>"}, {"name": "Phonic 4 Purple", "html": "<table class=\"ytable\"><tr><td style=\"font-weight:800;background:#f4f6fb\">&nbsp;</td><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">Phonics 4 - Purple Book</td></tr><tr><td>Co-T</td><td>Day</td><td>Lesson</td><td>Test</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"8\">2 days a week</td><td>Day 1</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>2-3</td><td>2025-04-05</td></tr><tr><td>Day 2</td><td>Unit 1(bl,pl,fl)</td><td>&nbsp;</td><td>6-9</td><td>10-11, Unit 1 시험공부</td></tr><tr><td>Day 3</td><td>Unit 2 (cl, gl, sl)</td><td>Unit 1 <br>bl, pl, fl 단어시험</td><td>12-13</td><td>14-15</td></tr><tr><td>Day 4</td><td>Unit 2 (cl, gl, sl)</td><td>&nbsp;</td><td>16-19</td><td>20-21, Unit 2 시험공부</td></tr><tr><td>Day 5</td><td>Unit 3 (br, cr, dr)</td><td>Unit 2 <br>cl, gl, sl 시험</td><td>22-23</td><td>24-25</td></tr><tr><td>Day 6</td><td>Unit 3 (br, cr, dr)</td><td>&nbsp;</td><td>26-29</td><td>30-31, Unit 3 시험공부</td></tr><tr><td>Day 7</td><td>Unit 4 (sm, sn, sw)</td><td>Unit 3 <br>br, cr, dr 시험</td><td>32-33</td><td>34-35</td></tr><tr><td>Day 8</td><td>Unit 4 (sm, sn, sw)</td><td>&nbsp;</td><td>36-39</td><td>40-41, Unit 4 시험공부</td></tr><tr><td rowspan=\"12\">3 days a week</td><td>Day 1</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>42-43</td><td>44-45</td></tr><tr><td>Day 2</td><td>Unit 5 (nk, ng, nt)</td><td>&nbsp;</td><td>46-49</td><td>50-51, Unit 5 시험공부</td></tr><tr><td>Day 3</td><td>Unit 6 (gh, ph, wh)</td><td>Unit 5 <br>nk, ng, nt 시험</td><td>52-53</td><td>54-55</td></tr><tr><td>Day 4</td><td>Unit 6 (gh, ph, wh)</td><td>&nbsp;</td><td>56-59</td><td>60-61, Unit 6 시험공부</td></tr><tr><td>Day 5</td><td>Unit 7 (ch, sh, th)</td><td>Unit 6 <br>gh, ph, wh 시험</td><td>62-63</td><td>64-65</td></tr><tr><td>Day 6</td><td>Unit 7 (ch, sh, th)</td><td>&nbsp;</td><td>66-69</td><td>70-71, Unit 7 시험공부</td></tr><tr><td>Day 7</td><td>Unit 8 (st, ft, lt)</td><td>Unit 7 <br>ch, sh, th 시험</td><td>72-73</td><td>74-75</td></tr><tr><td>Day 8</td><td>Unit 8 (st, ft, lt)</td><td>&nbsp;</td><td>76-79</td><td>80-81, Unit 8 시험공부</td></tr><tr><td>Day 9</td><td>Unit 9 <br>(Classroom English-TPR)</td><td>Unit 8 <br>st, ft, lt 시험</td><td>82-83 </td><td>82-83 복습</td></tr><tr><td>Day 10</td><td>Unit 9 <br>(Classroom English<br>-Script 작성)</td><td>&nbsp;</td><td>84-85</td><td>Script 암기</td></tr><tr><td>Day 11</td><td>Classroom English Script 발표</td><td>&nbsp;</td><td>84-87</td><td>88-89, Unit 8 시험공부</td></tr><tr><td>Day 12</td><td>Review Game</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055159409, "course": "파닉스"}, {"id": "seedsyl002", "title": "English Chest 2 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 2 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-42</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-46</td><td>WB: 28-29</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 2</td><td>47-48</td><td>WB: 30-31</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 2 / Lesson 4</td><td>56-57</td><td>WB: 36-37</td></tr><tr><td>Day 10</td><td>Unit 2 / Lesson 4</td><td>58-60</td><td>WB: 38-39</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 1</td><td>64-67</td><td>WB: 42-45</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>70-74</td><td>WB: 46-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055160409, "course": "리딩"}, {"id": "seedsyl003", "title": "English Chest 1 (2 months)", "dept": "초등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"5\" style=\"font-weight:800;background:#f4f6fb\">English Chest 1 (2 months)</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>8 weeks</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 2 days a week</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>〮 16 days total</td></tr><tr><td>Week</td><td>Day</td><td>Unit / Lesson</td><td>Pages</td><td>HW</td></tr><tr><td rowspan=\"2\">1st</td><td>Day 1</td><td>Unit 1 / Lesson 1</td><td>2025-12-15</td><td>WB: 6-9</td></tr><tr><td>Day 2</td><td>Unit 1 / Lesson 2</td><td>18-21</td><td>WB: 10-13</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Unit 1 / Lesson 3</td><td>24-27</td><td>WB: 14-17</td></tr><tr><td>Day 4</td><td>Unit 1 / Lesson 4</td><td>30-33</td><td>WB: 18-21</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Unit 2 / Lesson 1</td><td>38-41</td><td>WB: 24-27</td></tr><tr><td>Day 6</td><td>Unit 2 / Lesson 2</td><td>44-47</td><td>WB: 28-31</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Unit 2 / Lesson 3</td><td>50-53</td><td>WB: 32-35</td></tr><tr><td>Day 8</td><td>Unit 2 / Lesson 4</td><td>56-59</td><td>WB: 36-39</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Unit 3 / Lesson 1</td><td>64-66</td><td>WB: 42-43</td></tr><tr><td>Day 10</td><td>Unit 3 / Lesson 1</td><td>67-68</td><td>WB: 44-45</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Unit 3 / Lesson 2</td><td>70-72</td><td>WB: 46-47</td></tr><tr><td>Day 12</td><td>Unit 3 / Lesson 2</td><td>73-74</td><td>WB: 48-49</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Unit 3 / Lesson 3</td><td>76-78</td><td>WB: 50-51</td></tr><tr><td>Day 14</td><td>Unit 3 / Lesson 3</td><td>79-80</td><td>WB: 52-53</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Unit 3 / Lesson 4</td><td>82-84</td><td>WB: 54-55</td></tr><tr><td>Day 16</td><td>Unit 3 / Lesson 4</td><td>85-86</td><td>WB: 56-57</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055161409, "course": "리딩"}, {"id": "seedsyl004", "title": "English Time 4", "dept": "중등", "sheets": [{"name": "Sheet1", "html": "<table class=\"ytable\"><tr><td colspan=\"6\" style=\"font-weight:800;background:#f4f6fb\">English Time 4</td></tr><tr><td rowspan=\"3\" colspan=\"5\">&nbsp;</td><td>16 weeks</td></tr><tr><td>2 days a week</td></tr><tr><td>32 days total</td></tr><tr><td>Week</td><td>Day</td><td>Lesson / Title</td><td>Pages</td><td>Activity</td><td>HW</td></tr><tr><td rowspan=\"2\">1st - OT</td><td>Day 1</td><td>Welcome Chapter <br>&lt;Classroom English&gt;</td><td>vi~vii</td><td>Classroom English 익히고 상황별 classroom English script 작성</td><td>Script 암기, wb welcome pages</td></tr><tr><td>Day 2</td><td>Classroom English 복습, script 발표 / Classroom Rule 정하기</td><td>vi~vii</td><td>Speaking Class Rule 정하기</td><td>wb welcome pages</td></tr><tr><td rowspan=\"2\">2nd</td><td>Day 3</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p 1~3</td><td>책진도</td><td>wb p1-2</td></tr><tr><td>Day 4</td><td>Chapter 1 <br>&lt;At the Campsite&gt;</td><td>p.3~4</td><td>규칙/불규칙 과거형 매칭 게임, p.3 Q&amp;A 연습</td><td>wb p3-4</td></tr><tr><td rowspan=\"2\">3rd</td><td>Day 5</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 5~7</td><td>책진도</td><td>wb p5-6</td></tr><tr><td>Day 6</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 7</td><td>p.7 긍정문 부정문 익힌 뒤 해당문장 사용해서 <br>Lotte World / Everland Map - Amusement park project</td><td>wb p7-8</td></tr><tr><td rowspan=\"2\">4th</td><td>Day 7</td><td>Chapter 2 <br>&lt;At the Amusement Park&gt;</td><td>p. 8</td><td>Amusement Park Project Presentation <br>/ p.8 -ed sound 구분</td><td>N/A</td></tr><tr><td>Day 8</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 9~11</td><td>책진도 (House chores 익히고 p.11 문답 패턴 연습)</td><td>wb p9-10</td></tr><tr><td rowspan=\"2\">5th</td><td>Day 9</td><td>Chapter 3 <br>&lt;Around the House&gt;</td><td>p. 11~12</td><td>p.11 문답패턴 연습 activity </td><td>wb p11-12</td></tr><tr><td>Day 10</td><td>Review 1</td><td>p.13~15</td><td>책진도</td><td>wb p13-15</td></tr><tr><td rowspan=\"2\">6th</td><td>Day 11</td><td>Review 1</td><td>&nbsp;</td><td>Ch1~3 문장패턴 복습 후 롤플레잉 스크립트 작성</td><td>script 암기</td></tr><tr><td>Day 12</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 17~18</td><td>길찾기 activity</td><td>wb p16-17</td></tr><tr><td rowspan=\"2\">7th</td><td>Day 13</td><td>Chapter 4 <br>&lt;In town&gt;</td><td>p. 19~20</td><td>p. 19 문장패턴 활용 activity</td><td>wb p18-19</td></tr><tr><td>Day 14</td><td>Chapter 5 <br>&lt;At the Food Festival&gt;</td><td>p. 21~24</td><td>Food around the world 활동/책진도</td><td>wb p20-23</td></tr><tr><td rowspan=\"2\">8th</td><td>Day 15</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 25~26</td><td>책진도, “will” 활용해서 사계절 계획 작성</td><td>wb p24-25</td></tr><tr><td>Day 16</td><td>Chapter 6 <br>&lt;During the Year&gt;</td><td>p. 27~28</td><td>사계절 계획 발표</td><td>wb p26-27</td></tr><tr><td rowspan=\"2\">9th</td><td>Day 17</td><td>Review 2</td><td>p. 29~31</td><td>책진도, 다음시간 p31 예습 <br>(영어로 사칙연산 - worksheet 활용)</td><td>wb p28-30</td></tr><tr><td>Day 18</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p.33~35</td><td>Sea animals / 책진도</td><td>wb p31-32</td></tr><tr><td rowspan=\"2\">10th</td><td>Day 19</td><td>Chapter 7 <br>&lt;At the Aquarium&gt;</td><td>p. 35~36</td><td>비교급 활동</td><td>wb p33-34</td></tr><tr><td>Day 20</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 37~39</td><td>Animal-adjective matching / 최상급 패턴 익히기</td><td>wb p35-36</td></tr><tr><td rowspan=\"2\">11th</td><td>Day 21</td><td>Chapter 8 <br>&lt;At the Safari Park&gt;</td><td>p. 39~40</td><td>최상급 활동</td><td>wb p37-38</td></tr><tr><td>Day 22</td><td>ch 7~8 review</td><td>&nbsp;</td><td>비교급/최상급 복습 <br>비교급, 최상급 활용해서 script 작성 <br>&lt;Who should be the king of the zoo?&gt;</td><td>script 암기</td></tr><tr><td rowspan=\"2\">12th</td><td>Day 23</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p.41~42</td><td>Script 발표, 책진도</td><td>wb p39-40</td></tr><tr><td>Day 24</td><td>Chapter 9 <br>&lt;By the Seashore&gt;</td><td>p. 43~44</td><td>스포츠 &lt;What do you like to do?&gt; 활동</td><td>wb p41-42</td></tr><tr><td rowspan=\"2\">13th</td><td>Day 25</td><td>Review 3</td><td>p. 45~47</td><td>책진도</td><td>wb p43-45</td></tr><tr><td>Day 26</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 49~51</td><td>책진도</td><td>wb p46-47</td></tr><tr><td rowspan=\"2\">14th</td><td>Day 27</td><td>Chapter 10 <br>&lt;Collecting and Making&gt;</td><td>p. 51~52</td><td>p.51 패턴활용해서 like/dislike bingo 게임 후 activity</td><td>wb p48-49</td></tr><tr><td>Day 28</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 53~54</td><td>Solar system worksheet(각 행성 배우기)</td><td>wb p50-51</td></tr><tr><td rowspan=\"2\">15th</td><td>Day 29</td><td>Chapter 11<br>&lt;At the Planetarium&gt;</td><td>p. 55~56</td><td>Solar system 발표, 책진도</td><td>wb p52-53</td></tr><tr><td>Day 30</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 56~59</td><td>책진도</td><td>wb p54-55</td></tr><tr><td rowspan=\"2\">16th</td><td>Day 31</td><td>Chapter 12<br>&lt;At School&gt;</td><td>p. 59~60</td><td>p.59 패턴으로 &lt;롤모델과의 인터뷰&gt; script 작성</td><td>wb p56-57</td></tr><tr><td>Day 32</td><td>Review 4</td><td>p.61~63</td><td>role-playing, 책진도 <br>/ p.63 어려워서 선생님이 같이 풀어주세요.</td><td>wb p58-60 / <br>wb p61-64 (extra hw)</td></tr></table>"}], "uploadedBy": "관리자", "uploadedAt": 1787055162409, "course": "리딩"}]; store.syllabusSeeded=true; }
 // 반 자료·학생 명단처럼 "삭제"가 중요한 항목은 병합하지 않고 통째로 교체한다(마지막 저장이 우선).
 // 병합 방식(mergeById)에는 삭제라는 개념이 없어서, 지운 반·학생이 다른 기기 자료와 합쳐지며 계속 되살아나기 때문.
@@ -455,14 +456,25 @@ function save(){
 
 /* ---------- 실시간 동기화 (Firebase Realtime Database REST) ---------- */
 function syncOn(){ return !!(store.sync && store.sync.on && store.sync.url && store.sync.code); }
+function updateSyncBadge(){
+  // 이 파일 화면엔 배지 UI가 없어서 실제로는 아무 것도 안 그리지만, pullShared/pushShared 등에서
+  // 호출해도 안전하도록(정의되지 않아 에러나던 문제) 자리만 잡아둡니다.
+  const b=document.getElementById('syncBadge'); if(!b) return;
+}
 function syncBase(){
   let u=store.sync.url.trim().replace(/\/+$/,'');
   if(!/^https:\/\//.test(u)) u='https://'+u;
   return u+'/academies/'+encodeURIComponent(store.sync.code.trim());
 }
-async function fbGet(path){ const r=await fetch(syncBase()+path+'.json'); if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
-async function fbPut(path, data){ const r=await fetch(syncBase()+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}); if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
-async function fbDel(path){ await fetch(syncBase()+path+'.json',{method:'DELETE'}); }
+function fbFetch(url, opts, timeoutMs){
+  // 응답이 없이 무한정 멈춰있지 않도록(느린 회선 등) 일정 시간(기본 20초) 지나면 확실한 시간초과 오류로 실패 처리
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(), timeoutMs||20000);
+  return fetch(url, {...(opts||{}), signal:ctrl.signal}).finally(()=>clearTimeout(timer));
+}
+async function fbGet(path, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json', null, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
+async function fbPut(path, data, timeoutMs){ let r; try{ r=await fbFetch(syncBase()+path+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}, timeoutMs); }catch(e){ throw (e&&e.name==='AbortError') ? new Error('서버 응답 시간초과(네트워크 확인)') : e; } if(!r.ok){ let body=''; try{ body=await r.text(); }catch(e){} throw new Error('HTTP '+r.status+(body?' — '+body.slice(0,200):'')); } return r.json(); }
+async function fbDel(path){ try{ await fbFetch(syncBase()+path+'.json',{method:'DELETE'}); }catch(e){} }
 function toast(msg){ const el=document.getElementById('saved'); el.textContent=msg; el.classList.add('show');
   clearTimeout(saveTimer); saveTimer=setTimeout(()=>{el.classList.remove('show'); el.textContent='저장됨 ✓';},2200); }
 
@@ -609,6 +621,52 @@ async function pullShared(silent){
     }
   }catch(e){ console.warn('sync pull 실패', e); toast('⚠ 수신 실패: '+e.message); }
 }
+let syllabusSyncBusy=false, lastSylSyncAt=0;
+function schedulePushSyllabus(){
+  if(!syncOn()) return;
+  clearTimeout(schedulePushSyllabus._t);
+  schedulePushSyllabus._t=setTimeout(pushSyllabusShared, 500);
+}
+async function pushSyllabusShared(){
+  // syllabus는 PDF·한글·워드 첨부 때문에 용량이 커서, 다른 자료와 분리된 '/syllabus' 경로로 따로 전송합니다.
+  if(!syncOn()) return;
+  if(MODE!=='all' && !isAdminRole() && !loginTeacher()) return;
+  if(syllabusSyncBusy) return;
+  try{
+    syllabusSyncBusy=true;
+    let remote=null;
+    try{ remote=await fbGet('/syllabus', 25000); }catch(e){}
+    if(remote && remote.list){
+      const rStamp=remote.updatedAt||0, lStamp=(store.fieldStamps&&store.fieldStamps.syllabus)||0;
+      if(rStamp>lStamp) store.syllabus=mergeField(store.syllabus, remote.list);
+    }
+    store.fieldStamps=store.fieldStamps||{};
+    store.fieldStamps.syllabus=Date.now();
+    await fbPut('/syllabus', {updatedAt:store.fieldStamps.syllabus, list:store.syllabus}, 25000);
+    localStorage.setItem(KEY, JSON.stringify(store));
+    lastSyncError=null; lastSyncOkAt=Date.now();
+  }catch(e){ console.warn('syllabus sync push 실패', e); lastSyncError=e.message; }
+  finally{ syllabusSyncBusy=false; updateSyncBadge(); }
+}
+async function pullSyllabusShared(silent){
+  if(!syncOn()) return;
+  try{
+    const remote=await fbGet('/syllabus', 25000);
+    if(remote && remote.list){
+      const rStamp=remote.updatedAt||0, lStamp=(store.fieldStamps&&store.fieldStamps.syllabus)||0;
+      if(rStamp>lStamp){
+        store.syllabus=remote.list;
+        store.fieldStamps=store.fieldStamps||{}; store.fieldStamps.syllabus=rStamp;
+        localStorage.setItem(KEY, JSON.stringify(store));
+        if(state.tab==='syllabus' && !isEditingNow()) render(true);
+        if(!silent) toast('☁ 실러버스 자료 자동 적용됨');
+      }
+    }
+    lastSyncError=null; lastSyncOkAt=Date.now();
+  }catch(e){ console.warn('syllabus sync pull 실패', e); lastSyncError=e.message; }
+  lastSylSyncAt=Date.now();
+  updateSyncBadge();
+}
 async function pushSubmission(pack){
   if(!syncOn()) return false;
   try{
@@ -635,9 +693,11 @@ async function pollInbox(){
 function startSyncLoop(){
   if(!syncOn()) return;
   pullShared(true);
-  // 다른 사람이 바꾼 내용도 빨리 보이도록 5초마다 확인
+  pullSyllabusShared(true);
+  // 다른 사람이 바꾼 내용도 빨리 보이도록 5초마다 확인 (용량 큰 syllabus는 따로, 45초마다만 — 매 5초마다 첨부파일까지 통째로 주고받으면 회선이 느릴 때 자꾸 실패·타임아웃 나기 때문)
   if(MODE==='all'){ pollInbox(); setInterval(()=>{ pullShared(false); pollInbox(); }, 5000); }
   else setInterval(()=>pullShared(false), 5000);
+  setInterval(()=>pullSyllabusShared(true), 45000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden){ pullShared(true); if(MODE==='all') pollInbox(); } });
 }
 
@@ -957,6 +1017,7 @@ function goTab(t){
   try{ localStorage.setItem(LASTTAB_KEY, t); }catch(e){}
   render();
   window.scrollTo({top:0});
+  if(t==='syllabus' && syncOn() && Date.now()-lastSylSyncAt>8000) pullSyllabusShared(true);
 }
 function buildTabs(){
   const {main,more}=tabDefs();
@@ -5459,6 +5520,13 @@ function sylSheetsFromWorkbook(wb){
   });
 }
 function sylCourseOf(en){ return (en.course||'').trim() || '기타과정'; }
+function sylEntrySize(en){ try{ return JSON.stringify(en).length; }catch(e){ return 0; } }
+function sylIsQuotaErr(e){ return !!(e && (e.name==='QuotaExceededError' || e.code===22 || e.code===1014 || /quota/i.test(e.message||''))); }
+function sylErrAlert(e, what){
+  if(sylIsQuotaErr(e)) alert('저장 공간이 부족해 '+what+'이 저장되지 못했습니다. 안 쓰는 자료를 삭제하거나 "🔗 링크로 추가"를 이용해주세요.\n('+(e&&e.message||e)+')');
+  else alert(what+' 저장 중 예상치 못한 오류가 발생했습니다 (저장 공간 문제가 아닐 수 있어요). 다시 시도해보시고, 계속되면 이 메시지를 그대로 알려주세요.\n['+((e&&e.name)||'Error')+'] '+(e&&e.message||e));
+}
+function sylFmtBytes(n){ return n>1024*1024 ? (n/1024/1024).toFixed(1)+'MB' : (n/1024).toFixed(0)+'KB'; }
 function renderSyllabus(){
   const admin=isAdminRole();
   state.sylDept=state.sylDept||'전체';
@@ -5479,15 +5547,26 @@ function renderSyllabus(){
     <input type="text" id="sylSearch" value="${esc(state.sylQ||'')}" placeholder="🔍 교재명으로 검색" style="width:100%;margin-bottom:12px;padding:8px 12px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:.86rem">`;
   if(admin){
     const courseOptions=[...new Set(store.syllabus.filter(s=>!s._deleted).map(sylCourseOf))].sort((a,b)=>a.localeCompare(b,'ko'));
-    h+=`<div style="background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
+    const sylBytes=store.syllabus.reduce((n,s)=>n+sylEntrySize(s),0);
+    const usageWarn=sylBytes>3*1024*1024;
+    h+=`<div style="background:${usageWarn?'#fdf3e3':'#f7f9fc'};border:1px solid ${usageWarn?'var(--warn)':'var(--line)'};border-radius:10px;padding:10px;margin-bottom:12px">
+      <div style="font-size:.78rem;font-weight:700;color:${usageWarn?'var(--warn)':'var(--sub)'};margin-bottom:8px">💾 Syllabus 저장 용량 약 ${sylFmtBytes(sylBytes)} 사용 중 ${usageWarn?'— 브라우저 저장 공간이 얼마 안 남았을 수 있어요. 큰 파일은 아래 "🔗 링크로 추가"를 이용하시거나, 안 쓰는 자료를 삭제해 공간을 확보해주세요.':'(브라우저에 직접 저장 — 용량이 크면 저장이 안 될 수 있어 큰 파일은 링크 추가를 권장합니다)'}</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
         <input type="text" id="sylTitle" placeholder="교재/과정명 (파일 1개만 올릴 때만 적용, 비우면 파일명 사용)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
         <select id="sylDeptSel" style="padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">${SYL_DEPTS.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select>
         <input type="text" id="sylCourseInput" list="sylCourseList" placeholder="과정·영역 (예: 파닉스, 리딩, 문법 — 새로 입력 가능)" style="flex:1;min-width:180px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
         <datalist id="sylCourseList">${courseOptions.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
       </div>
-      <div class="cbtns"><button class="btn primary" id="sylUpBtn">📤 엑셀 파일 업로드 (진도표, 여러 개 선택 가능)</button><input type="file" id="sylUpFile" accept=".xlsx,.xls" multiple style="display:none"></div>
-      <div style="font-size:.76rem;color:var(--sub);margin-top:6px">엑셀 시트를 그대로 표로 변환해 올려둡니다. 시트가 여러 개면 탭으로 나눠 보여줘요. 파일을 여러 개 한 번에 선택하면 각각 파일명으로 등록됩니다 (부서·과정은 모두 위에서 고른 값으로 같이 적용).</div>
+      <div class="cbtns"><button class="btn primary" id="sylUpBtn">📤 파일 업로드 (엑셀·PDF·한글 등, 여러 개 선택 가능)</button><input type="file" id="sylUpFile" accept=".xlsx,.xls,.pdf,.hwp,.hwpx,.doc,.docx" multiple style="display:none"></div>
+      <div style="font-size:.76rem;color:var(--sub);margin:6px 0 12px">엑셀은 시트를 그대로 표로 변환해 보여줘요(시트 여러 개면 탭으로 구분). PDF는 화면에서 바로 미리보기가 되고, 한글(HWP)·워드 파일은 미리보기 없이 다운로드로 제공됩니다. 파일을 여러 개 한 번에 선택하면 각각 파일명으로 등록됩니다 (부서·과정은 위에서 고른 값 공통 적용). <b>파일당 3MB까지</b> 올릴 수 있어요 — 브라우저 저장 공간을 함께 쓰기 때문에 너무 크거나 파일이 많아지면 저장이 안 될 수 있습니다.</div>
+      <div style="border-top:1px dashed var(--line);padding-top:10px">
+        <div style="font-size:.78rem;font-weight:700;color:var(--sub);margin-bottom:6px">🔗 링크로 추가 (구글 드라이브·네이버 클라우드 등에 올린 파일의 공유 링크 — 용량 제한 없이 등록 가능, 큰 파일은 이 방법을 추천해요)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <input type="text" id="sylLinkTitle" placeholder="교재/과정명" style="flex:1;min-width:160px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+          <input type="url" id="sylLinkUrl" placeholder="https://... (공유 링크 붙여넣기)" style="flex:2;min-width:220px;padding:7px 10px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit">
+          <button class="btn small" id="sylLinkAddBtn">🔗 링크 추가</button>
+        </div>
+      </div>
     </div>`;
   }
   const entries=store.syllabus.filter(s=>!s._deleted && (state.sylDept==='전체'||s.dept===state.sylDept) && (state.sylCourse==='전체'||sylCourseOf(s)===state.sylCourse)).sort((a,b)=>(b.uploadedAt||0)-(a.uploadedAt||0));
@@ -5498,11 +5577,20 @@ function renderSyllabus(){
     h+=`<div class="ccard syl-card ${open?'open':''}" data-syltitle="${esc((en.title||'').toLowerCase())}" style="border-left-color:var(--ebest);margin-bottom:12px">
       <div class="chead" data-toggle="${esc(en.id)}"><span class="arrow">▶</span>
         <span style="font-weight:800">${esc(en.title||'제목 없음')}</span>
-        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}</span>
+        <span style="font-size:.76rem;color:var(--sub);margin-left:8px">${en.kind==='pdf'?'📄 PDF · ':en.kind==='file'?'📎 파일 · ':en.kind==='link'?'🔗 링크 · ':''}${esc(en.dept||'기타')} · ${esc(sylCourseOf(en))} · ${esc(en.uploadedBy||'')} · ${en.uploadedAt?new Date(en.uploadedAt).toLocaleDateString('ko-KR'):''}${admin&&en.kind!=='link'?' · '+sylFmtBytes(sylEntrySize(en)):''}</span>
         ${admin?`<span style="margin-left:auto;display:flex;gap:6px"><button class="btn small sylRename" data-id="${esc(en.id)}">✎ 이름 수정</button><button class="btn small sylCourseEdit" data-id="${esc(en.id)}">📂 과정 수정</button><button class="del sylDel" data-id="${esc(en.id)}">삭제</button></span>`:''}
       </div>
       <div class="cbody" style="padding:12px 16px">`;
-    if(en.sheets && en.sheets.length>1){
+    if(en.kind==='link' && en.url){
+      h+=`<div class="empty" style="text-align:left">🔗 외부 링크로 등록된 자료입니다 (브라우저 저장 공간을 쓰지 않아요).</div>
+        <div style="margin-top:10px"><a href="${esc(en.url)}" target="_blank" rel="noopener" class="btn primary small">↗ 새 창에서 열기</a></div>`;
+    } else if(en.kind==='pdf' && en.fileData){
+      h+=`<div class="cbtns" style="margin-bottom:10px"><a href="${en.fileData}" download="${esc(en.fileName||'syllabus.pdf')}" class="btn small">⬇ 다운로드</a><a href="${en.fileData}" target="_blank" rel="noopener" class="btn small">↗ 새 창에서 보기</a></div>
+        <iframe src="${en.fileData}" style="width:100%;height:75vh;border:1px solid var(--line);border-radius:10px" title="${esc(en.title||'PDF')}"></iframe>`;
+    } else if(en.kind==='file' && en.fileData){
+      h+=`<div class="empty">이 파일 형식(${esc((en.fileName||'').split('.').pop()||'')})은 화면 미리보기를 지원하지 않아요. 다운로드해서 확인해주세요.</div>
+        <div style="margin-top:10px"><a href="${en.fileData}" download="${esc(en.fileName||'file')}" class="btn primary small">⬇ ${esc(en.fileName||'다운로드')}</a></div>`;
+    } else if(en.sheets && en.sheets.length>1){
       state.sylSheetSel=state.sylSheetSel||{};
       const cur=state.sylSheetSel[en.id]||en.sheets[0].name;
       h+=`<div class="cbtns" style="margin-bottom:10px">${en.sheets.map(sh=>`<button class="btn ${cur===sh.name?'primary':'small'} sylSheetBtn" data-id="${esc(en.id)}" data-sheet="${esc(sh.name)}">${esc(sh.name)}</button>`).join('')}</div>`;
@@ -5512,6 +5600,33 @@ function renderSyllabus(){
       h+=`<div style="overflow-x:auto">${en.sheets[0].html}</div>`;
     } else {
       h+='<div class="empty">표시할 내용이 없습니다.</div>';
+    }
+    const atts=en.attachments||[];
+    if(atts.length || admin){
+      h+=`<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)">
+        <div style="font-size:.78rem;font-weight:800;color:var(--sub);margin-bottom:6px">📎 첨부 자료 (문제 파일 등)</div>`;
+      if(atts.length){
+        h+='<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">'+atts.map(at=>
+          at.url
+          ? `<span style="display:inline-flex;align-items:center;gap:6px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:5px 9px">
+              <a href="${esc(at.url)}" target="_blank" rel="noopener" style="font-size:.8rem;color:var(--ink);font-weight:700;text-decoration:none">🔗 ${esc(at.fileName||'링크')}</a>
+              ${admin?`<button class="del sylAttDel" data-id="${esc(en.id)}" data-attid="${esc(at.id)}" style="font-size:.72rem;padding:1px 6px">✕</button>`:''}
+            </span>`
+          : `<span style="display:inline-flex;align-items:center;gap:6px;background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:5px 9px">
+              <a href="${at.fileData}" download="${esc(at.fileName||'file')}" style="font-size:.8rem;color:var(--ink);font-weight:700;text-decoration:none">⬇ ${esc(at.fileName||'파일')}</a>
+              ${admin?`<button class="del sylAttDel" data-id="${esc(en.id)}" data-attid="${esc(at.id)}" style="font-size:.72rem;padding:1px 6px">✕</button>`:''}
+            </span>`).join('')+'</div>';
+      } else if(!admin){
+        h+='<div style="font-size:.78rem;color:#8b93a7">첨부된 자료가 없습니다.</div>';
+      }
+      if(admin){
+        h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+          <button class="btn small sylAttBtn" data-id="${esc(en.id)}">📎 문제 파일 첨부</button><input type="file" class="sylAttFile" data-id="${esc(en.id)}" multiple style="display:none">
+          <input type="url" class="sylAttLinkUrl" data-id="${esc(en.id)}" placeholder="🔗 문제 파일 링크 주소" style="min-width:180px;padding:5px 8px;border:1.5px solid var(--line);border-radius:8px;font-family:inherit;font-size:.78rem">
+          <button class="btn small sylAttLinkBtn" data-id="${esc(en.id)}">링크 추가</button>
+        </div>`;
+      }
+      h+='</div>';
     }
     h+='</div></div>';
   });
@@ -5567,6 +5682,13 @@ function bindSyllabus(){
     r.onerror=()=>reject(r.error||new Error('파일을 읽지 못했습니다'));
     r.readAsArrayBuffer(f);
   });
+  const readAsDataURL=(f)=>new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result);
+    r.onerror=()=>reject(r.error||new Error('파일을 읽지 못했습니다'));
+    r.readAsDataURL(f);
+  });
+  const SYL_MAX_BYTES=3*1024*1024; // 브라우저 저장 공간 한도를 고려한 파일당 상한(3MB) — 더 큰 파일은 '링크로 추가'를 이용
   if(upFile) upFile.onchange=async()=>{
     if(!isAdminRole()) return;
     const files=[...upFile.files]; if(!files.length) return;
@@ -5574,22 +5696,53 @@ function bindSyllabus(){
     const singleTitle=titleEl&&titleEl.value.trim();
     const dept=deptEl?deptEl.value:'기타';
     const course=(courseEl&&courseEl.value.trim())||'';
-    const failed=[];
+    const failed=[], tooBig=[];
     for(const f of files){
-      const title=(files.length===1 && singleTitle) ? singleTitle : f.name.replace(/\.(xlsx|xls)$/i,'');
+      if(f.size>SYL_MAX_BYTES){ tooBig.push(f.name); continue; }
+      const ext=(f.name.split('.').pop()||'').toLowerCase();
+      const title=(files.length===1 && singleTitle) ? singleTitle : f.name.replace(/\.[^.]+$/,'');
+      const id='syl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4);
       try{
-        const sheets=await readOneXlsx(f);
-        store.syllabus.push({id:'syl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4), title, dept, course, sheets, uploadedBy:myName, uploadedAt:Date.now()});
+        if(ext==='xlsx'||ext==='xls'){
+          const sheets=await readOneXlsx(f);
+          store.syllabus.push({id, title, dept, course, kind:'xlsx', sheets, uploadedBy:myName, uploadedAt:Date.now()});
+        } else if(ext==='pdf'){
+          const fileData=await readAsDataURL(f);
+          store.syllabus.push({id, title, dept, course, kind:'pdf', fileData, fileName:f.name, uploadedBy:myName, uploadedAt:Date.now()});
+        } else {
+          // 한글(HWP)·워드 등 브라우저가 직접 미리보기를 못 하는 형식 — 다운로드로만 제공
+          const fileData=await readAsDataURL(f);
+          store.syllabus.push({id, title, dept, course, kind:'file', fileData, fileName:f.name, uploadedBy:myName, uploadedAt:Date.now()});
+        }
       }catch(e){ failed.push(f.name); }
     }
-    save(); if(titleEl) titleEl.value=''; if(courseEl) courseEl.value=''; upFile.value=''; render(true);
+    let saveErr=null;
+    try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
+    if(titleEl) titleEl.value=''; if(courseEl) courseEl.value=''; upFile.value=''; render(true);
+    if(saveErr) sylErrAlert(saveErr, '방금 올린 자료');
+    if(tooBig.length) alert('다음 파일은 너무 커서(3MB 초과) 올리지 못했습니다. 큰 파일은 구글 드라이브 등에 올린 뒤 "🔗 링크로 추가"를 이용해주세요:\n'+tooBig.join('\n'));
     if(failed.length) alert('다음 파일은 읽지 못했습니다:\n'+failed.join('\n'));
+  };
+  const linkAddBtn=v.querySelector('#sylLinkAddBtn');
+  if(linkAddBtn) linkAddBtn.onclick=()=>{
+    if(!isAdminRole()) return;
+    const titleEl=v.querySelector('#sylLinkTitle'), urlEl=v.querySelector('#sylLinkUrl'), deptEl=v.querySelector('#sylDeptSel'), courseEl=v.querySelector('#sylCourseInput');
+    const url=urlEl?urlEl.value.trim():'';
+    if(!url){ alert('링크 주소를 입력해주세요.'); return; }
+    const title=(titleEl&&titleEl.value.trim())||url;
+    const dept=deptEl?deptEl.value:'기타';
+    const course=(courseEl&&courseEl.value.trim())||'';
+    store.syllabus.push({id:'syl'+Date.now().toString(36)+Math.random().toString(36).slice(2,6)+Math.random().toString(36).slice(2,4), title, dept, course, kind:'link', url, uploadedBy:myName, uploadedAt:Date.now()});
+    let linkSaveErr=null;
+    try{ save(); schedulePushSyllabus(); }catch(e){ linkSaveErr=e; }
+    if(titleEl) titleEl.value=''; if(urlEl) urlEl.value=''; render(true);
+    if(linkSaveErr) sylErrAlert(linkSaveErr, '링크');
   };
   v.querySelectorAll('.sylDel').forEach(b=>b.onclick=()=>{
     if(!isAdminRole()) return;
     if(!confirm('이 실러버스를 삭제할까요?')) return;
     const en=store.syllabus.find(x=>x.id===b.dataset.id); if(en){ en._deleted=true; en.updatedAt=Date.now(); }
-    save(); render(true);
+    save(); schedulePushSyllabus(); render(true);
   });
   v.querySelectorAll('.sylRename').forEach(b=>b.onclick=()=>{
     if(!isAdminRole()) return;
@@ -5599,7 +5752,7 @@ function bindSyllabus(){
     const trimmed=nv.trim();
     if(!trimmed){ alert('이름을 입력해주세요.'); return; }
     en.title=trimmed; en.updatedAt=Date.now();
-    save(); render(true);
+    save(); schedulePushSyllabus(); render(true);
   });
   v.querySelectorAll('.sylCourseEdit').forEach(b=>b.onclick=()=>{
     if(!isAdminRole()) return;
@@ -5607,7 +5760,55 @@ function bindSyllabus(){
     const nv=prompt('과정·영역 이름을 입력하세요 (예: 파닉스, 리딩, 문법)', sylCourseOf(en));
     if(nv==null) return; // 취소
     en.course=nv.trim(); en.updatedAt=Date.now();
-    save(); render(true);
+    save(); schedulePushSyllabus(); render(true);
+  });
+  v.querySelectorAll('.sylAttBtn').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const inp=v.querySelector('.sylAttFile[data-id="'+b.dataset.id+'"]');
+    if(inp) inp.click();
+  });
+  v.querySelectorAll('.sylAttFile').forEach(inp=>inp.onchange=async()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===inp.dataset.id); if(!en) return;
+    const files=[...inp.files]; if(!files.length) return;
+    en.attachments=en.attachments||[];
+    const tooBig=[], failed=[];
+    for(const f of files){
+      if(f.size>SYL_MAX_BYTES){ tooBig.push(f.name); continue; }
+      try{
+        const fileData=await readAsDataURL(f);
+        en.attachments.push({id:'att'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), fileName:f.name, fileData});
+      }catch(e){ failed.push(f.name); }
+    }
+    en.updatedAt=Date.now();
+    let saveErr=null;
+    try{ save(); schedulePushSyllabus(); }catch(e){ saveErr=e; }
+    inp.value=''; render(true);
+    if(saveErr) sylErrAlert(saveErr, '첨부 파일');
+    if(tooBig.length) alert('다음 파일은 너무 커서(6MB 초과) 첨부하지 못했습니다:\n'+tooBig.join('\n'));
+    if(failed.length) alert('다음 파일은 읽지 못했습니다:\n'+failed.join('\n'));
+  });
+  v.querySelectorAll('.sylAttDel').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
+    if(!confirm('이 첨부 파일을 삭제할까요?')) return;
+    en.attachments=(en.attachments||[]).filter(a=>a.id!==b.dataset.attid);
+    en.updatedAt=Date.now();
+    save(); schedulePushSyllabus(); render(true);
+  });
+  v.querySelectorAll('.sylAttLinkBtn').forEach(b=>b.onclick=()=>{
+    if(!isAdminRole()) return;
+    const en=store.syllabus.find(x=>x.id===b.dataset.id); if(!en) return;
+    const urlInp=v.querySelector('.sylAttLinkUrl[data-id="'+b.dataset.id+'"]');
+    const url=urlInp?urlInp.value.trim():'';
+    if(!url){ alert('링크 주소를 입력해주세요.'); return; }
+    en.attachments=en.attachments||[];
+    en.attachments.push({id:'att'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), fileName:url, url});
+    en.updatedAt=Date.now();
+    let attLinkErr=null;
+    try{ save(); schedulePushSyllabus(); }catch(e){ attLinkErr=e; }
+    if(urlInp) urlInp.value=''; render(true);
+    if(attLinkErr) sylErrAlert(attLinkErr, '첨부 링크');
   });
 }
 
