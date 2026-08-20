@@ -809,10 +809,31 @@ function parseTimeBlockRange(text){
   return fmt(matches[0])+'~'+fmt(matches[matches.length-1]);
 }
 // 아이콘 주별 시간표(store.weeklyTimetable.icon)에서 이 반과 이름이 같은 줄을 찾아 비어있는 요일·시간·담당 칸만 채운다
+// "초등(E1)" 반이, 여러 반이 같이 듣는 금요일 특강처럼 "초등(E1,2,3,4)"라는 이름으로 시간표에 합쳐서 적혀있는 경우도
+// 같은 반으로 인식해야 한다 — 괄호 앞 이름이 같고, 괄호 안 번호 목록에 이 반의 번호가 포함되면 매칭으로 본다.
+// "초등\n(E1,2,3,4)\nLC"처럼, 요일 칸 대신 "이 시간에 합쳐서 듣는 반 번호 목록"이 셀 둘째 줄에 적힌 경우가 있다
+// (반 이름과 요일 목록 둘 다 아닌 group-bracket) — 그런 경우 반 이름을 "초등(E1,2,3,4)"로 합쳐서 봐야 한다.
+function entryGroupBracket(e){ const ds=String(e.daysStr||'').trim(); return /^\([^)]*\)$/.test(ds)?ds:''; }
+function fullEntryClassName(e){ const g=entryGroupBracket(e); return g?String(e.className||'').trim()+g:(e.className||''); }
+// 실제 요일 목록(daysStr)이 아니라 위의 group-bracket인 경우엔, 이 칸이 실제로 나온 그 요일(e.day) 하나만 쓴다
+function entryRealDayStr(e){ return entryGroupBracket(e)?(e.day||''):(e.daysStr||e.day||''); }
+function classNameMatchesEntry(target, entryFullName){
+  const t=String(target||'').trim().toLowerCase();
+  const e=String(entryFullName||'').trim().toLowerCase();
+  if(!t||!e) return false;
+  if(t===e) return true;
+  const tm=t.match(/^(.*?)\(([^)]*)\)\s*$/);
+  const em=e.match(/^(.*?)\(([^)]*)\)\s*$/);
+  if(tm && em && tm[1].trim()===em[1].trim()){
+    const tNums=(tm[2].match(/\d+/g)||[]);
+    const eNums=(em[2].match(/\d+/g)||[]);
+    if(tNums.length && eNums.length && tNums.every(n=>eNums.includes(n))) return true;
+  }
+  return false;
+}
 function autofillClassFromWeeklyTimetable(a,m,id){
   if(a!=='icon'){ alert('아이콘 반에서만 쓸 수 있는 기능입니다.'); return; }
   const c=findClassById(a,m,id); if(!c) return;
-  if(!c.subjects||!c.subjects.length){ alert('먼저 과목 칸을 추가한 뒤(과목명 입력) 다시 눌러주세요 — 과목명으로 시간표와 짝을 맞춥니다.'); return; }
   const wtWeeks=(store.weeklyTimetable&&store.weeklyTimetable.icon)||{};
   const keys=Object.keys(wtWeeks).filter(k=>wtWeeks[k]).sort();
   if(!keys.length){ alert('업로드된 주별 시간표가 없습니다. 설정 > 아이콘 주별 시간표에서 먼저 업로드해주세요.'); return; }
@@ -820,31 +841,40 @@ function autofillClassFromWeeklyTimetable(a,m,id){
   const inMonth=keys.filter(k=>k.slice(0,7)===m);
   const weekKey=inMonth.length?inMonth[inMonth.length-1]:keys[keys.length-1];
   const week=wtWeeks[weekKey];
-  const nm=String(c.name||'').trim().toLowerCase();
-  const matched=(week.entries||[]).filter(e=>String(e.className||'').trim().toLowerCase()===nm);
-  if(!matched.length){ alert(`「${c.name}」와 이름이 같은 반을 ${week.label||weekKey} 시간표에서 찾지 못했습니다. (반 이름 표기가 시간표 파일과 정확히 같아야 인식됩니다)`); return; }
+  const matched=(week.entries||[]).filter(e=>classNameMatchesEntry(c.name, fullEntryClassName(e)));
+  if(!matched.length){ alert(`「${c.name}」와 이름이 같은(또는 여러 반이 합쳐진) 반을 ${week.label||weekKey} 시간표에서 찾지 못했습니다. (반 이름 표기가 시간표 파일과 비슷해야 인식됩니다)`); return; }
   // 같은 과목·시간대가 요일마다 한 줄씩 중복 등장하므로 하나로 합친다
   const bySubjTime={};
   matched.forEach(e=>{
     const key=(e.subject||'')+'|'+(e.timeBlock||'');
-    if(!bySubjTime[key]) bySubjTime[key]={subject:e.subject||'', timeBlock:e.timeBlock||'', daysStr:e.daysStr||'', col:e.col};
+    if(!bySubjTime[key]) bySubjTime[key]={subject:e.subject||'', timeBlock:e.timeBlock||'', daysStr:entryRealDayStr(e), col:e.col};
   });
   const records=Object.values(bySubjTime);
-  let filled=0;
-  c.subjects.forEach(s=>{
-    if(!s.subject) return; // 과목 칸이 비어있으면 시간표의 어느 줄과 짝지을지 알 수 없어 건너뜀(잘못 채우는 것을 막기 위함)
-    const rec=records.find(r=>r.subject.trim().toLowerCase()===s.subject.trim().toLowerCase());
-    if(!rec) return;
-    let touched=false;
-    if(!s.day && rec.daysStr){ s.day=rec.daysStr.replace(/[()]/g,'').trim(); touched=true; }
-    if(!s.time){ const range=parseTimeBlockRange(rec.timeBlock); if(range){ s.time=range; touched=true; } }
-    if(!s.teacher && rec.col!=null && week.teacherByCol && week.teacherByCol[rec.col]){ s.teacher=week.teacherByCol[rec.col]; touched=true; }
-    if(touched) filled++;
+  c.subjects=c.subjects||[];
+  let filled=0, added=0;
+  records.forEach(rec=>{
+    if(!rec.subject) return; // 과목명이 없는 줄은 어느 과목 칸과 짝지을지 알 수 없어 건너뜀
+    const s=c.subjects.find(x=>String(x.subject||'').trim().toLowerCase()===rec.subject.trim().toLowerCase());
+    const teacher=(rec.col!=null && week.teacherByCol && week.teacherByCol[rec.col])||'';
+    const day=(rec.daysStr||'').replace(/[()]/g,'').trim();
+    const time=parseTimeBlockRange(rec.timeBlock);
+    if(s){
+      let touched=false;
+      if(!s.day && day){ s.day=day; touched=true; }
+      if(!s.time && time){ s.time=time; touched=true; }
+      if(!s.teacher && teacher){ s.teacher=teacher; touched=true; }
+      if(touched) filled++;
+    } else {
+      // 이 과목이 아직 반 편집에 하나도 없으면(금요일 특강 LC처럼) 새 과목 줄로 추가한다
+      c.subjects.push({subject:rec.subject, day, time:time||'', teacher, book:'', hw:'', progress:'', note:'', room:''});
+      added++;
+    }
   });
-  if(!filled){ alert('이미 다 채워져 있거나, 과목명이 시간표와 일치하는 줄을 찾지 못했습니다.'); return; }
+  if(!filled && !added){ alert('이미 다 채워져 있어서 더 채울 내용이 없습니다.'); return; }
   c.updatedAt=Date.now();
   save(); render(true);
-  alert(`${week.label||weekKey} 시간표 기준으로 ${filled}개 과목의 빈 칸(요일·시간·담당)을 채웠습니다.`);
+  const parts=[]; if(filled) parts.push(`${filled}개 칸 채움`); if(added) parts.push(`${added}개 과목 새로 추가`);
+  alert(`${week.label||weekKey} 시간표 기준으로 ${parts.join(', ')}했습니다.`);
 }
 function uniqueClassName(a,m,base){
   const arr=editArr(a,m); let n=base, i=1;
